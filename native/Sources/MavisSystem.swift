@@ -43,6 +43,8 @@ enum MV {
         static let blue = Color(0x789aff)      // unread, context ring, selected workspace, focus, your bubble (22%)
         static let bubble = Color(0x789aff, 0.22)
         static let red = Color(0xf2b8b5)
+        /// Lines added and removed (+352 −1), as Claude's: Google's green and red on dark.
+        static let added = Color(0x81c995), removed = Color(0xf28b82)
         static let doneText = Color(0x8fdcb4)
         static let doneFill = Color(0x8fdcb4, 0.14)
         static let statusOn = Color(0x34a853)

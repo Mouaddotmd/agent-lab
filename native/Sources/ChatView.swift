@@ -843,6 +843,7 @@ struct LiveTurn: View {
         TurnBody(agentId: agentId, turn: turn, shown: words.count(turn),
                  approvals: turn.running ? s.approvals.filter { $0.agentId == agentId && ($0.conv ?? agentId) == here } : [],
                  activity: turn.running ? run?.activity : nil,
+                 detail: turn.running ? run?.detail : nil,
                  command: turn.running && here == agentId ? work.commands.last?.line : nil)
     }
 }
@@ -853,6 +854,7 @@ struct TurnBody: View {
     let shown: Int; let approvals: [Approval]
     /// While it runs: what the engine says it's on ("Preparing a command"), and a command still running.
     var activity: String? = nil
+    var detail: String? = nil
     var command: String? = nil
     var body: some View {
         let running = turn.running
@@ -878,7 +880,8 @@ struct TurnBody: View {
             }
             if line {
                 StatusLine(label: approvals.isEmpty ? Self.label(current: current, command: command, activity: activity, writingReport: writingReport, answering: answering) : "Waiting for your OK",
-                           waiting: !approvals.isEmpty, started: turn.startedAt, work: work)
+                           waiting: !approvals.isEmpty, started: turn.startedAt, work: work,
+                           detail: approvals.isEmpty && current == nil && command == nil ? detail : nil)
             }
             if running { ForEach(Array(approvals.enumerated()), id: \.element.id) { i, p in ApprovalCard(p: p, primary: i == 0) } }
             if folded { FoldedWork(pieces: opening + work) }
@@ -939,9 +942,13 @@ struct PlanCard: View {
         .padding(.horizontal, MV.on ? MV.Space.headerLead : 16).padding(.vertical, MV.on ? MV.Space.inset : 14)
         .frame(minWidth: 240, alignment: .leading)
         .fixedSize(horizontal: true, vertical: false)
-        // MAVIS: a flat card on box, radius 16, no edge (the 1 pt edge read as an inset).
+        // MAVIS: a card on box, radius 16, with the chat box's own hairline (the system's 8% white ring), so it reads as
+        // a raised card, not a flat patch.
         .background(RoundedRectangle(cornerRadius: MV.on ? MV.Radius.card : R.card, style: .continuous).fill(MV.on ? MV.Tone.box : C.v2))
-        .overlay { if !MV.on { RoundedRectangle(cornerRadius: R.card).strokeBorder(C.edge, lineWidth: 1) } }
+        .overlay {
+            if MV.on { RoundedRectangle(cornerRadius: MV.Radius.card, style: .continuous).strokeBorder(MV.Stroke.boxHover, lineWidth: MV.Stroke.boxRestWidth) }
+            else { RoundedRectangle(cornerRadius: R.card).strokeBorder(C.edge, lineWidth: 1) }
+        }
         .animation(.easeOut(duration: 0.16), value: plan.done)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Plan: " + plan.items.enumerated().map { "\($0.element)\(plan.done.contains($0.offset + 1) ? ", done" : "")" }.joined(separator: "; "))
@@ -1006,6 +1013,8 @@ struct WorkSpinner: View {
 /// arrow opens every step so far and the words in between, capped at 200, newest in view.
 struct StatusLine: View {
     let label: String; let waiting: Bool; let started: Double?; let work: [Piece]
+    /// Under the label, dim: what it's on right now (Claude Code's), so a long think or a big file never reads as stuck.
+    var detail: String? = nil
     @State private var open = false
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1027,6 +1036,11 @@ struct StatusLine: View {
                 }
                 .buttonStyle(.plain)
                 .transaction { $0.animation = nil }
+            }
+            if let detail, !detail.isEmpty, !open {
+                Text(detail).font(F.font(MV.on ? MV.Text.meta : 13, .regular)).foregroundStyle(MV.on ? MV.Ink.t3 : C.i9)
+                    .lineLimit(1).truncationMode(.tail).frame(maxWidth: MV.on ? MV.Chat.readWidth : .infinity, alignment: .leading)
+                    .transaction { $0.animation = nil }
             }
             if open {
                 ScrollView(.vertical) { WorkList(pieces: work).background(CapsuleScrollers()) }

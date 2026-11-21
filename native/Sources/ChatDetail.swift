@@ -200,7 +200,7 @@ struct ChangeCount: View {
     var body: some View {
         let added = files.reduce(0) { $0 + $1.added }, removed = files.reduce(0) { $0 + $1.removed }
         if added + removed > 0 {
-            (Text("+\(added)").foregroundStyle(C.i10) + Text(" −\(removed)").foregroundStyle(C.i9))
+            (Text("+\(added)").foregroundStyle(MV.on ? MV.Accent.added : C.i10) + Text(" −\(removed)").foregroundStyle(MV.on ? MV.Accent.removed : C.i9))
                 .font(F.font(12, .medium)).monospacedDigit()
         }
     }
@@ -318,7 +318,8 @@ struct ChangedFiles: View {
         let shown = all ? files : Array(files.prefix(5))
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Icon("pen", 14).foregroundStyle(C.i10)
+                // MAVIS: the Changes icon (the same one as the Changes pane), not a pen.
+                Icon(MV.on ? "mvDiff" : "pen", 14).foregroundStyle(C.i10)
                 Text(files.count == 1 ? "Changed 1 file" : "Changed \(files.count) files").font(F.font(13, .medium)).foregroundStyle(C.i12)
                 ChangeCount(files: files)
                 Spacer(minLength: 0)

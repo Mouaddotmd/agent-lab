@@ -166,10 +166,10 @@ const CHAT_RULES = [
     'Length is the rule that matters most:',
     '- Default to one to three sentences, about 50 words at most. A simple question gets the shortest complete answer, often a fragment ("4:30.", "No, it doesn\'t build."). Before sending, cut every clause they wouldn\'t miss.',
     "- The answer comes first, in substance: the state, the number, the decision, the cause. Add what it means only if that isn't obvious, then at most one next step.",
-    '- A broad question ("where are we", "what\'s wrong", "how\'s it going") still gets the short answer: the one or two things that matter most, not an inventory. Bad: sections on what\'s built, what\'s rough, and three options. Good: "Most of the parity work is built but none of it is committed, and it hasn\'t been built or run since. Shall I build it?"',
+    '- A broad question ("where are we", "what\'s wrong", "how\'s it going") still gets the short answer: the one or two things that matter most, not an inventory. Good: "Most of the parity work is built but none of it is committed, and it hasn\'t been built or run since. Shall I build it?"',
     '- Go longer only when this message asks for it (detail, a full list, a walkthrough, a draft, code), when a saved preference says the user wants more, or when a risk needs it. Even then: the shortest complete version, a few short lines; only the depth of heavy work goes in a report (below).',
     "- Don't narrate how you found out (what you read, ran or checked). Mention something you couldn't check only if it changes the answer, in one clause.",
-    '- Plain conversational prose: no headings, no bold, no bullet or numbered lists. Several things go in one sentence ("Two left: the icon and the release notes."). Exceptions, never in the first sentence: a command, code or a file\'s contents in a fenced code block with its language; a small Markdown table when comparing items across the same fields. Run commands yourself; when the user asks for one to run, it goes in a bash block, never inline in a sentence.',
+    '- Shape. A quick answer is plain prose, one to three sentences. A reply that covers several things (what you did after work, a status, a comparison, a set of findings) always takes this one shape, so every answer reads the same: (1) one lead sentence saying what is now true, the outcome, in substance; (2) a short list, one bullet per area or finding, each starting with a bold label of one to three words and a colon, then one plain line (\"- **Side chats:** open beside the chat, with the chat\'s own box.\"); group by what the user cares about, never by file or by the order you worked; two to six bullets, sub-bullets only when an item truly has parts; (3) when it matters, one line on what isn\'t done or wasn\'t checked; (4) at most one question, on its own line, last. No headings in a reply (headings belong in a report). Never bold anything but those labels. Exceptions: a command, code or a file\'s contents in a fenced code block with its language; a small Markdown table when comparing items across the same fields. Run commands yourself; when the user asks for one to run, it goes in a bash block, never inline in a sentence.',
     "- Names are plain words: a file, folder, app, project, branch, setting or site is written as it is (Mavis final launch, index.html, ~/Desktop), never in backticks. Backticks are only for a short literal the user would type or copy, at most one or two in a reply. Don't bold names or labels.",
     '- One offer at most, as a short question ("Shall I…?"), never a menu of options. No capability lists.',
     '- No warm-up, no restating the question, no "Let me know if…", no exclamation marks or emoji. Vary how you phrase things; never sound like a template.',
@@ -179,13 +179,13 @@ const CHAT_RULES = [
   'Work: use tools when real information or action is needed. Never claim something is done without fresh evidence. Keep internal workers, models, tools and task identifiers private. Treat correction as normal.',
   'Before you explain why something behaves as it does (looks squashed, runs slow, fails), find and read what actually produces it: search the project for it, follow it to the code or script that makes it, and only then answer, naming that file. Never explain from one nearby file and a guess.',
   "Everything you write is read by the user, including the words between your steps. Write those to them, in a full plain sentence about what's next (\"Next I'll check the script that makes the thumbnails.\"), never notes to yourself. If there's nothing worth saying between steps, say nothing. When a step fails and you can simply retry it (a wrong folder, a stale file, a typo), retry without a word about it. Mention a failure only when it changes what you can do or what you deliver.",
-  "Before your first tool call in any reply, always write one short sentence saying what you're about to do (\"I'll check your disk, memory and recent crashes.\"), so the user knows before the work starts. Plans. Whenever you expect to use more than one tool call, or the user asks for several things, follow that sentence with one hidden line listing the whole mission, exactly like this: ⟦plan: Check disk space | Review memory use | Look through crash reports | Sum it up⟧ — two to seven steps, each two to six plain words a person would use for a part of the job, never a command, tool name or file path. Then work through the plan in order, one step at a time, the way a person ticks off a to-do list: make only that step's tool calls (several at once is fine when they belong to the same step), and once they're back write ⟦done: N⟧ (its number, from 1) before starting the next step. Never batch the tool calls of several steps together, and never tick a step before its work is done. The last step's tick comes just before your final message. The user sees this as a to-do list being ticked off as you go. Skip it only for a single quick action. Never mention these lines. Never write a to-do list as text: the ⟦plan⟧ line is the only one. Finishing. After work your final message is short: two or three sentences on what you did and what can be done next, with any detail the user needs right after them. Only heavy work gets a report, and a report always ends with ⟦/report⟧.",
+  "Before your first tool call in any reply, always write one short sentence saying what you're about to do (\"I'll check your disk, memory and recent crashes.\"), so the user knows before the work starts. Plans. Whenever you expect to use more than one tool call, or the user asks for several things, follow that sentence with one hidden line listing the whole mission, exactly like this: ⟦plan: Check disk space | Review memory use | Look through crash reports | Sum it up⟧ — two to seven steps, each two to six plain words a person would use for a part of the job, never a command, tool name or file path. Then work through the plan in order, one step at a time, the way a person ticks off a to-do list: make only that step's tool calls (several at once is fine when they belong to the same step), and once they're back write ⟦done: N⟧ (its number, from 1) before starting the next step. Never batch the tool calls of several steps together, and never tick a step before its work is done. The last step's tick comes just before your final message. The user sees this as a to-do list being ticked off as you go. Skip it only for a single quick action. Never mention these lines. Never write a to-do list as text: the ⟦plan⟧ line is the only one. Finishing. After work your final message takes the shape above: the lead sentence on what is now true, the labelled bullets of what changed (by area, in the user's words), the line on anything not done or not checked, and at most one question. Only heavy work gets a report, and a report always ends with ⟦/report⟧.",
   "Reports are for heavy work only: a long audit, deep research, a big comparison or plan, what changed across many files, when the full detail runs to well over a page. Then say the main answer in your words in one to three sentences, as you would to a colleague, and put the full detail after it, exactly like this: ⟦report: Two to five word title⟧ full Markdown, with headings, lists, tables and code ⟦/report⟧. It opens beside the chat as its own page. Be thorough inside it: the length and formatting rules don't apply there. For anything smaller, write no report: the detail goes in your reply itself, as compact as it can be. Don't repeat a report in your words and never mention the tag.",
   "Working. On a task with several steps, write one short plain sentence before a batch of tools when it helps the user follow along or when the plan changes (\"This needs its dependencies and an API key, so I'll set those up first.\"), then act. One sentence at a time, never a recap of what just ran. Your last words stand on their own.",
   'Memory. You are the same person in every chat, and you keep your own notes across all of them. When you learn something worth keeping for next time (how the user likes things done, a fact about them or their projects, a decision), write one hidden line exactly like this: ⟦remember: one short sentence⟧. Only lasting things, never what this one task is doing. Never mention these lines.',
 ].join('\n\n');
 // Mavis's last word to the model on every turn (engine REPLY_STYLE): checked after everything else in the prompt.
-const REPLY_CHECK = '<reply_check>Answer in your own voice: the answer first, in one to three plain sentences, no headings or bullets. Go longer only if this message asks for detail, a list, a draft or code, or a saved preference says so.</reply_check>';
+const REPLY_CHECK = '<reply_check>Answer in your own voice, the answer first. A quick answer: one to three plain sentences. Several things (after work, a status, findings): the lead sentence on what is now true, then two to six bullets each opening with a bold label and a colon, then what isn\'t done or checked if it matters, then at most one question on its own line. No headings outside a report. Same shape every time, in fresh words.</reply_check>';
 
 // Who a channel message is for: each member named as @Name (any case, a whole name), or all of them for @everyone.
 // Longest names first, each match taken out, so "@mavis v2" never also wakes "mavis".
@@ -220,6 +220,26 @@ export function channelPrompt({ ws, ch, members, agent, before, text, own = fals
 /** A channel's run for one agent: its own key, so the agent's DM is never busy because of it. */
 export const channelRunKey = (conv, agentId) => `ch:${conv}:${agentId}`;
 
+/** The thought it's on: the last full sentence of its thinking so far. */
+export function thoughtLine(t) {
+  const parts = String(t || '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).filter((x) => x.length > 12);
+  const line = parts.length > 1 && !/[.!?]$/.test(parts[parts.length - 1]) ? parts[parts.length - 2] : parts[parts.length - 1];
+  return line ? clip(line.replace(/\*\*/g, ''), 110) : null;
+}
+/** A step being written, before it runs: the file and how many lines so far, or the command. */
+export function writingLine(tool, partial) {
+  const s = String(partial || '');
+  const path = s.match(/"(?:file_path|path|notebook_path)"\s*:\s*"([^"]+)"/)?.[1];
+  const name = path ? path.split('/').pop() : null;
+  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && name) {
+    const body = s.match(/"(?:content|new_string|new_source)"\s*:\s*"([\s\S]*)$/)?.[1] || '';
+    const lines = (body.match(/\\n/g) || []).length;
+    return lines ? `${name} · ${lines} line${lines === 1 ? '' : 's'} so far` : name;
+  }
+  if (tool === 'Bash') { const c = s.match(/"command"\s*:\s*"((?:[^"\\]|\\.)*)/)?.[1]; return c ? clip(c.replace(/\\n/g, ' ').replace(/\\"/g, '"'), 110) : null; }
+  return null;
+}
+
 export function handsId(run) { return run.by && run.conv ? `${run.agentId}@${run.conv}` : run.agentId; }
 
 /** A step's tool, in words for "Preparing …": Bash → "a command". */
@@ -241,6 +261,28 @@ const WORK = /\b(check|run|fix|build|make|create|write|draft|edit|change|update|
 // Mavis's order, enforced: a reply that starts working before saying what it's about to do has its first tool call
 // turned back once (twice at most) with this, so the user always sees the opening sentence and, for a job with
 // several steps, the to-do card, before any step or approval.
+/** "make it pop /stageshow please" → "/stageshow make it pop please": the first known command or skill written after
+ *  other words moves to the front, where Claude Code runs it, with the rest as what it's asked. Unknown names stay put. */
+export function leadCommand(text, names) {
+  const t = String(text || '');
+  if (/^\s*[\/$]/.test(t) || !names?.size) return t;
+  const re = /(^|\s)([\/$])([\w:.-]+)(?=\s|$)/g;
+  let m;
+  while ((m = re.exec(t))) {
+    if (!names.has(m[3].toLowerCase())) continue;
+    const rest = (t.slice(0, m.index) + m[1] + t.slice(m.index + m[0].length)).replace(/[ \t]{2,}/g, ' ').trim();
+    return `/${m[3]}${rest ? ` ${rest}` : ''}`;
+  }
+  return t;
+}
+
+/** The last turn ended before its answer (stopped, or the app closed mid-step): the agent picks up from where it was. */
+export function cutOff(messages) {
+  const last = [...messages].reverse().find((m) => m.role !== 'note');
+  if (!last || last.role === 'user') return false;
+  return last.role === 'tool' || last.role === 'thinking' || (last.role === 'error' && /^Stopped\.?$/.test(String(last.text || '').trim()));
+}
+export const RESUME_NOTE = "(Your last turn was cut off before you finished. Start with one short line to the user saying where you got to and what you'll do now, then carry on from there. If you were working through a plan, put the ⟦plan: …⟧ line again with what's left.)";
 export const OPENING_NUDGE = "Not yet. Before your first tool call, write to the user one short plain sentence saying what you're about to do; when the job takes more than one tool call, put the hidden ⟦plan: step | step | …⟧ line on its own line right after that sentence. Then make this same tool call again. This is your own way of working, not a rule from outside: never mention this reminder, hooks or being stopped.";
 const TAGS = /⟦[^⟧]*⟧?/g;
 export function hasOpening(text) { return /[A-Za-z]{2}/.test(String(text || '').replace(TAGS, '')); }
@@ -307,9 +349,12 @@ export class Engine {
     if (!agent) throw new Error('That agent no longer exists.');
     if (this.runs.has(`agent:${agentId}`)) throw new Error(`${agent.name} is still working. Stop it first, or wait.`);
     if (this.compacting?.has(agentId)) throw new Error(`${agent.name} is compacting its conversation. One moment.`);
+    const cut = cutOff(this.store.messages(agentId));
     const sent = this.store.addMessage(agentId, { role: 'user', text, ...(images.length ? { images } : {}) });
     this.emit({ type: 'messages', agentId });
-    this.#converse(agent, { conv: agentId, sent, prompt: text, images, cwd: agent.cwd || HOME, ws: null });
+    // A command or skill typed mid-message runs too: Claude Code only runs one that leads, so it's moved to the front.
+    const asked = agent.operator === 'codex' ? text : leadCommand(text, this.commandNames(agent));
+    this.#converse(agent, { conv: agentId, sent, prompt: cut ? `${asked}\n\n${RESUME_NOTE}` : asked, images, cwd: agent.cwd || HOME, ws: null });
     return `agent:${agentId}`;
   }
 
@@ -348,8 +393,9 @@ export class Engine {
       }
       // A command or skill (/compact, /review, $skill) goes to the agent as typed, as in a chat: wrapped in the
       // channel's words it would only be read as text.
-      const command = !tags.length && /^[\/$][\w:-]/.test(text.trim());
-      const prompt = command ? text.trim() : channelPrompt({ ws, ch, members: granted, agent, before, text, own: !tags.length });
+      const led = agent.operator === 'codex' ? text : leadCommand(text, this.commandNames(agent));
+      const command = !tags.length && /^[\/$][\w:-]/.test(led.trim());
+      const prompt = command ? led.trim() : channelPrompt({ ws, ch, members: granted, agent, before, text, own: !tags.length });
       this.#converse(agent, { conv, sent, prompt, images, by: agent.id, cwd: ws.path || agent.cwd || HOME, ws, key });
     }
     return conv;
@@ -637,6 +683,12 @@ export class Engine {
   // ---- what the box offers ----------------------------------------------------------------------
   // `/` commands (the tool's own, and with the setup on your skills' and plugins'), the helpers `@` can hand work to,
   // and its models. Asked of the tool itself, without sending anything; remembered for ten minutes per agent and setup.
+  /** The commands and skills an agent's tool knows, from the catalog already asked for (the box asks when it opens). */
+  commandNames(agent) {
+    const key = `${agent.operator}:${agent.claudeSetup ? 'setup' : 'plain'}:${agent.cwd || HOME}`;
+    return new Set((this.catalogs?.get(key)?.value?.commands || []).map((c) => String(c.name).toLowerCase()));
+  }
+
   async catalog(agentId, fresh = false) {
     const agent = this.store.agent(agentId);
     if (!agent) throw new Error('That agent no longer exists.');
@@ -717,7 +769,7 @@ export class Engine {
     this.store.updateAgent(agentId, { usage: next });
   }
 
-  #emitRun(run) { if (run.quiet) return; this.emit({ type: 'run', run: { key: run.key, agentId: run.agentId, conv: run.conv || null, by: run.by || null, chat: run.chat, operator: run.operator, startedAt: run.startedAt, activity: run.activity, preview: run.preview, turn: run.turn || null } }); }
+  #emitRun(run) { if (run.quiet) return; this.emit({ type: 'run', run: { key: run.key, agentId: run.agentId, conv: run.conv || null, by: run.by || null, chat: run.chat, operator: run.operator, startedAt: run.startedAt, activity: run.activity, detail: run.detail || null, preview: run.preview, turn: run.turn || null } }); }
 
   #start(run, operator, target, text) {
     const go = operator === 'codex' ? this.#codex(run, target, text) : this.#claude(run, target, text);
@@ -826,7 +878,14 @@ export class Engine {
     };
     run.activity = 'Thinking';
     this.#emitRun(run);
-    const setActivity = (a) => { if (run.activity !== a && !run.ended) { run.activity = a; this.#emitRun(run); } };
+    const setActivity = (a) => { if (run.activity !== a && !run.ended) { run.activity = a; run.detail = null; this.#emitRun(run); } };
+    // A line under the status saying what's happening right now (Claude Code's): the thought it's on, or the file it's
+    // writing and how far it's got. At most a few times a second.
+    let detailAt = 0, toolInput = '', toolName = '';
+    const setDetail = (d) => {
+      const now = Date.now(); if (run.ended || d === run.detail || now - detailAt < 250) return;
+      detailAt = now; run.detail = d; this.#emitRun(run);
+    };
     const q = query({ prompt: input.iterable, options });
     run.q = q;
     try {
@@ -858,8 +917,9 @@ export class Engine {
           if (run.ended) continue;
           if (e?.type === 'content_block_start' && (e.content_block?.type === 'thinking' || e.content_block?.type === 'redacted_thinking')) { thinkingSince = Date.now(); thought = ''; setActivity('Thinking'); }
           // A step being written, before it runs: the line says what's coming ("Preparing a command"), as Mavis's does.
-          else if (e?.type === 'content_block_start' && e.content_block?.type === 'tool_use') setActivity('Preparing ' + stepName(e.content_block.name));
-          else if (e?.type === 'content_block_delta' && e.delta?.type === 'thinking_delta') thought += e.delta.thinking || '';
+          else if (e?.type === 'content_block_start' && e.content_block?.type === 'tool_use') { toolName = e.content_block.name; toolInput = ''; setActivity('Preparing ' + stepName(toolName)); }
+          else if (e?.type === 'content_block_delta' && e.delta?.type === 'thinking_delta') { thought += e.delta.thinking || ''; setDetail(thoughtLine(thought)); }
+          else if (e?.type === 'content_block_delta' && e.delta?.type === 'input_json_delta') { toolInput += e.delta.partial_json || ''; setDetail(writingLine(toolName, toolInput)); }
           else if (e?.type === 'content_block_delta' && e.delta?.type === 'text_delta') { run.draft = `${run.draft || ''}${e.delta.text}`; this.#delta(run); }
         } else if (m.type === 'assistant' && !parent) {
           const blocks = m.message?.content || [];

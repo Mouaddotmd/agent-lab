@@ -461,7 +461,7 @@ private struct MergeDone: View {
 private struct Counts: View {
     let add: Int; let del: Int
     var body: some View {
-        (Text("+\(add)").foregroundStyle(C.i10) + Text(" −\(del)").foregroundStyle(C.i9)).font(F.font(12, .medium)).monospacedDigit()
+        (Text("+\(add)").foregroundStyle(MV.on ? MV.Accent.added : C.i10) + Text(" −\(del)").foregroundStyle(MV.on ? MV.Accent.removed : C.i9)).font(F.font(12, .medium)).monospacedDigit()
     }
 }
 

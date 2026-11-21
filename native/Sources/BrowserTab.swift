@@ -190,6 +190,14 @@ private struct BrowserBody: View {
 
 /// MAVIS address pill (prototype .omni): 34 tall, full pill on omni, padding 0 4, 8 apart; the lock in a 26 circle
 /// (box2, t2); the address 13.5 in t1 (its path in t3). A click opens the box over the page, as before.
+extension BrowserPage {
+    /// The address of a page with no site, as Chrome shows it: "File · ~/Desktop/…/index.html", or the address itself.
+    static func plainAddress(_ u: URL) -> (String, String) {
+        if u.isFileURL { return ("File \u{00B7} ", (u.path as NSString).abbreviatingWithTildeInPath) }
+        return ("", u.absoluteString)
+    }
+}
+
 private struct MVAddressPill: View {
     @ObservedObject var page: BrowserPage
     let action: () -> Void
@@ -197,13 +205,19 @@ private struct MVAddressPill: View {
         let shape = Capsule()
         Button(action: action) {
             HStack(spacing: MV.Space.labelGap) {
-                Icon(page.secure ? "mvLock" : "mvGlobe", MV.Size.iconSmall - MV.Space.rowGap).foregroundStyle(MV.Ink.t2)
+                Icon(page.url?.isFileURL == true ? "mvFile" : page.secure ? "mvLock" : "mvGlobe", MV.Size.iconSmall - MV.Space.rowGap).foregroundStyle(MV.Ink.t2)
                     .frame(width: MV.Browser.site, height: MV.Browser.site).background(Circle().fill(MV.Tone.box2))
                 if let u = page.url, let host = u.host() {
                     let rest = u.path + (u.query.map { "?" + $0 } ?? "")
                     (Text(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host).foregroundStyle(MV.Ink.t1)
                      + Text(rest == "/" ? "" : rest).foregroundStyle(MV.Ink.t3))
                         .font(F.font(MV.Browser.address, .regular)).lineLimit(1).truncationMode(.tail)
+                } else if let u = page.url {
+                    // A page with no site (a file on this Mac, a data page): Chrome's "File" and the path, never the
+                    // empty "Search…" as if nothing were open.
+                    let (lead, rest) = BrowserPage.plainAddress(u)
+                    (Text(lead).foregroundStyle(MV.Ink.t3) + Text(rest).foregroundStyle(MV.Ink.t1))
+                        .font(F.font(MV.Browser.address, .regular)).lineLimit(1).truncationMode(.head)
                 } else {
                     Text("Search or type an address").font(F.font(MV.Browser.address, .regular)).foregroundStyle(MV.Ink.t3).lineLimit(1)
                 }
@@ -231,6 +245,10 @@ private struct AddressPill: View {
                         (Text(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host).foregroundStyle(C.i12)
                          + Text(rest == "/" ? "" : rest).foregroundStyle(C.i9))
                             .font(F.font(13, .regular)).lineLimit(1).truncationMode(.tail)
+                    } else if let u = page.url {
+                        let (lead, rest) = BrowserPage.plainAddress(u)
+                        (Text(lead).foregroundStyle(C.i9) + Text(rest).foregroundStyle(C.i12))
+                            .font(F.font(13, .regular)).lineLimit(1).truncationMode(.head)
                     } else {
                         Text("Search, ask or type an address").font(F.font(13, .regular)).foregroundStyle(C.i9).lineLimit(1)
                     }

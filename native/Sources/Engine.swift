@@ -201,6 +201,8 @@ struct FileChange: Codable, Equatable, Hashable {
 /// A run in progress (engine.js snapshot).
 /// `conv` is the conversation it writes into (the agent's id for a DM, a channel's conv id); `by` is set in a channel.
 struct Run: Codable, Equatable { var key: String; var agentId: String?; var startedAt: Double?; var activity: String?; var turn: String?; var conv: String? = nil; var by: String? = nil
+    /// What it's on right now, under the status line: the thought, or the file being written and how far.
+    var detail: String? = nil
     var conversation: String? { conv ?? agentId }
 }
 /// Something an agent wants to do that needs your yes (engine.js pending).

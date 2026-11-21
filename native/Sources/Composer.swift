@@ -433,8 +433,13 @@ enum PlusItem: Int, CaseIterable {
             return
         }
         // `/command`: the first word only.
-        if let agentID, upto.hasPrefix("/"), !upto.contains(" "), !upto.contains("\n") {
-            let q = String(upto.dropFirst())
+        // `/command`: at the start, or anywhere after a space (a skill can be asked for mid-sentence; the engine moves it
+        // to the front, where Claude Code runs it).
+        if let agentID, let at = upto.range(of: #"(^|\s)/[^\s/]*$"#, options: .regularExpression) {
+            let token = upto[at].trimmingCharacters(in: .whitespacesAndNewlines)
+            let leading = upto[..<at.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let start = (upto as NSString).length - (token as NSString).length
+            let q = String(token.dropFirst())
             let catalog = store.catalogs[agentID]
             var all = catalog?.commands ?? []
             if !all.contains(where: { $0.name == "model" }) { all.append(.init(name: "model", about: "Switch this agent's model", hint: "[model]", kind: "command")) }
@@ -443,7 +448,11 @@ enum PlusItem: Int, CaseIterable {
             all.append(.init(name: "btw", about: "Ask about this chat without adding to it", hint: "<question>", kind: "command"))
             // Handing off is a chat's (a channel has no single agent to pass from).
             if self.agentID != nil { all.append(.init(name: "handoff", about: "Pass this chat to another agent", hint: "", kind: "command")) }
+            // Agent Lab's own (/model, /btw, /handoff) act on the whole box: only at its start.
+            if !leading { all.removeAll { CommandTokens.own.contains($0.name) } }
             let order = ["command": 0, "skill": 1, "plugin": 2]
+            // Mid-sentence, only names that hold what you typed (a path like "/Users" must not catch ↵ with a loose match).
+            if !leading, !q.isEmpty { all.removeAll { !$0.name.lowercased().contains(q.lowercased()) } }
             let ranked = all.compactMap { c -> (Int, Catalog.Command)? in Rank.score(q, name: c.name, about: c.about).map { ($0, c) } }
                 .sorted { a, b in
                     let ga = q.isEmpty ? order[a.1.kind] ?? 0 : 0, gb = q.isEmpty ? order[b.1.kind] ?? 0 : 0
@@ -456,7 +465,7 @@ enum PlusItem: Int, CaseIterable {
                 Suggestion(kind: c.kind == "skill" ? .skill : c.kind == "plugin" ? .plugin : .command, label: "/" + c.name, detail: c.about,
                            insert: (codex && c.kind == "skill" ? "$" : "/") + c.name + " ", hint: c.hint)
             }
-            show(Array(found), range: NSRange(location: 0, length: (upto as NSString).length))
+            show(Array(found), range: NSRange(location: start, length: (token as NSString).length))
             if catalog == nil { store.loadCatalog(agentID) }
             return
         }
