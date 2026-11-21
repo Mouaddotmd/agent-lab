@@ -441,6 +441,18 @@ enum ChatSearch {
 extension EnvironmentValues {
     /// The DM a view is in (steps that open a helper use it).
     @Entry var chatAgentId: String? = nil
+    /// The conversation a view belongs to (an agent's id, or a channel's conv): asks, runs and work are matched to it.
+    @Entry var chatConv: String? = nil
+    /// A pane's tab is the one in front (behind, its AppKit views are hidden: no cursor zones over the front tab).
+    @Entry var paneTabOn = true
+    /// Set by ChatHost: whether this kept chat is the one on screen (a chat you've left keeps drawing, but goes inert).
+    @Entry var chatActivity: ChatActivity? = nil
     /// Words to light in the text under here (find in chat).
     @Entry var findQuery: String = ""
+}
+
+
+/// Whether a kept chat is on screen. ChatHost sets it; what animates or listens checks it.
+@MainActor final class ChatActivity: ObservableObject {
+    @Published var on = true
 }

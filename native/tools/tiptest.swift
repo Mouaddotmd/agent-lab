@@ -40,8 +40,11 @@ import AppKit
             }
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
         }
-        let cases: [(String, TipEdge)] = [("Collapse browser", .bottom), ("New agent", .bottom), ("Today", .bottom),
-                                           ("Add files, commands, plugins", .top), ("New tab", .bottom), ("Back", .bottom), ("Plugins and settings", .top)]
+        // The buttons this look has (MAVIS has no top bar: back and forward live in the Go menu).
+        let cases: [(String, TipEdge)] = MV.on
+            ? [("New agent (\u{2318}N)", .bottom), ("Today", .top), ("Add files, commands, plugins", .top), ("Talk", .top), ("Plugins and settings", .top)]
+            : [("Collapse browser", .bottom), ("New agent", .bottom), ("Today", .bottom),
+               ("Add files, commands, plugins", .top), ("New tab", .bottom), ("Back", .bottom), ("Plugins and settings", .top)]
         for (i, (title, edge)) in cases.enumerated() {
             guard let owner = Tips.shared.owner(title), let anchor = owner.view else { check(false, "\(title): button found"); continue }
             spin(0.4)                                                    // cold: the last label has gone a while ago
@@ -69,7 +72,7 @@ import AppKit
             check(Tips.shared.showing == nil, "\(title): leaving hides it")
         }
         // Warm: right after one goes, the next shows at once.
-        if let a = Tips.shared.owner("New agent"), let b = Tips.shared.owner("Today") {
+        if let a = Tips.shared.owner(MV.on ? "New agent (\u{2318}N)" : "New agent"), let b = Tips.shared.owner("Today") {
             Tips.shared.enter(a, title: "New agent", detail: nil, edge: .bottom); spin(0.7)
             Tips.shared.leave(a); Tips.shared.enter(b, title: "Today", detail: nil, edge: .bottom); spin(0.05)
             check(Tips.shared.showing == "Today", "next button over: shows at once")

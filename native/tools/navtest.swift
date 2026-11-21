@@ -50,6 +50,8 @@ struct NavTest {
 
 // Panes: widths, the rail, and how a drag follows the pointer and settles.
 @MainActor func paneChecks(_ check: (String, Bool, @autoclosure () -> String) -> Void) {
+    // MAVIS keeps the rail fixed (the classic sidebar's drag and fold don't exist there).
+    if MV.on { check("MAVIS: the sidebar is the fixed rail", Panes().sidebar == Panes.rail, "\(Panes().sidebar)"); return }
     for k in ["sidebar", "list", "now"] { UserDefaults.standard.removeObject(forKey: "pane." + k) }
     UserDefaults.standard.removeObject(forKey: "pane.sidebar.folded")
     let p = Panes(), S = PaneID.sidebar, L = PaneID.list

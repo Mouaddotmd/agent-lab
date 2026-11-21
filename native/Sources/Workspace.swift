@@ -424,6 +424,7 @@ struct WorkspacePage: View {
         else {
             let id = "c" + UUID().uuidString.prefix(8).lowercased()
             cats[ci].channels.append(.init(id: id, name: name, agents: newAgents.isEmpty ? nil : newAgents))
+            for a in newAgents where !(w.members ?? []).contains(a) { Task { await s.setMember(a, w.id, true) } }
             s.openAgent = nil; s.openChannel = id
         }
         Task { await s.saveChannels(w, cats) }
@@ -485,6 +486,7 @@ struct ChannelPane: View {
             // A channel has the same tools as a chat with an agent (browser, terminal, files) plus Changes, which only
             // a workspace has.
             ChatWithPanel(panel: panel, chat: column(conv: conv, rows: rows, cast: cast, cat: cat, idx: idx, panel: panel).modifier(MVDropZone(key: "ch:\(conv)")))
+                .environment(\.chatConv, conv)
         } else {
             column(conv: conv, rows: rows, cast: cast, cat: cat, idx: idx, panel: panel)
         }
@@ -496,6 +498,8 @@ struct ChannelPane: View {
                                  name: channel.name, members: members, panel: panel,
                                  given: w.granted(channel, among: s.agents),
                                  set: { ids in
+                                     // Given a channel: a member of its workspace too.
+                                     for id in ids where !(w.members ?? []).contains(id) { Task { await s.setMember(id, w.id, true) } }
                                      var cats = w.categories ?? []
                                      for ci in cats.indices {
                                          if let i = cats[ci].channels.firstIndex(where: { $0.id == channel.id }) { cats[ci].channels[i].agents = ids }
@@ -566,6 +570,7 @@ struct ChannelComposer: View {
             .onAppear { connect() }
             .onChange(of: channel.id) { _, _ in connect() }
             .onChange(of: members.map(\.id)) { _, _ in connect() }
+            .onChange(of: channel.agents ?? []) { _, _ in connect() }
             .onDisappear { model.save() }
     }
     /// MAVIS: the same chat box as a chat with an agent (MVChatBox): its Mode is the channel agent's, talking works

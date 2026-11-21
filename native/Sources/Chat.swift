@@ -28,12 +28,15 @@ let WAIT_TEXT = Color(0x52a8ff), FAIL_TEXT = Color(0xff6166), WAIT = Color(0x007
 /// mouad.work's blue (dark), for names and links in the chat's words: the same tone as the site's marked words.
 let MARK_BLUE = Color.live(\.blue)
 
-func clock(_ ms: Double) -> String { let f = DateFormatter(); f.dateFormat = "h:mm a"; return f.string(from: Date(timeIntervalSince1970: ms / 1000)) }
+/// Made once (a new formatter per time label, twice per message, cost every redraw).
+private let clockFormat: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm a"; return f }()
+private let dayFormat: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEEE, MMMM d"; return f }()
+func clock(_ ms: Double) -> String { clockFormat.string(from: Date(timeIntervalSince1970: ms / 1000)) }
 func dayLabel(_ ms: Double) -> String {
     let d = Date(timeIntervalSince1970: ms / 1000), cal = Calendar.current
     if cal.isDateInToday(d) { return "Today" }
     if cal.isDateInYesterday(d) { return "Yesterday" }
-    let f = DateFormatter(); f.dateFormat = "EEEE, MMMM d"; return f.string(from: d)
+    return dayFormat.string(from: d)
 }
 /// web: shortAgo
 func shortAgo(_ ms: Double) -> String {
@@ -501,7 +504,7 @@ struct FnKeys: NSViewRepresentable {
             if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-                guard let self, e.window === self.window, e.modifierFlags.contains(.function),
+                guard let self, e.window === self.window, !MainActor.assumeIsolated({ self.inAwayChat }), e.modifierFlags.contains(.function),
                       let n = Int(e.charactersIgnoringModifiers ?? ""), n >= 1, n <= self.keys.count else { return e }
                 self.keys.pick(n - 1); return nil
             }

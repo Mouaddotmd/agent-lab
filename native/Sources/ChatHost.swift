@@ -20,6 +20,8 @@ final class ChatViews {
     final class Kept { let view: NSHostingView<AnyView>; var token: Any; let same: (Any, Any) -> Bool
         init(_ v: NSHostingView<AnyView>, _ t: Any, _ same: @escaping (Any, Any) -> Bool) { view = v; token = t; self.same = same } }
     private var kept: [String: Kept] = [:]
+    private(set) var activity: [String: ChatActivity] = [:]
+    func activity(_ key: String) -> ChatActivity { if let a = activity[key] { return a }; let a = ChatActivity(); activity[key] = a; return a }
     private(set) var keys: [String] = []                       // most recent last
 
     /// The kept view for `key`. Its content is set again only when `token` (what it shows: the agent, the channel)
@@ -47,6 +49,24 @@ final class ChatViews {
     func forget(_ key: String) { keys.removeAll { $0 == key }; kept.removeValue(forKey: key)?.view.removeFromSuperview() }
 }
 
+/// The slot a kept chat sits in: covered (left or under a sheet), it takes no clicks or keys.
+final class ChatSlot: NSView {
+    override var isFlipped: Bool { true }
+    weak var shown: NSView?
+    /// Something covers the window (⌘K, a form, a report): the chat takes no clicks, so they reach what covers it.
+    /// A kept chat is an AppKit view of its own, and SwiftUI's dimmed backdrop can't stop clicks reaching it.
+    var covered = false
+    override func hitTest(_ point: NSPoint) -> NSView? { covered ? nil : super.hitTest(point) }
+    /// A chat you've left (or covered) takes no keyboard shortcuts: ⌘. on Home never stops the agent behind it.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool { covered ? false : super.performKeyEquivalent(with: event) }
+    override func layout() {
+        super.layout()
+        guard let v = shown, bounds.width > 0, bounds.height > 0 else { return }
+        if v.frame != bounds { v.frame = bounds; v.layoutSubtreeIfNeeded() }
+        if v.isHidden { v.isHidden = false }
+    }
+}
+
 /// Shows the kept view for `key`, built by `content` the first time. Chats you've opened stay in the window, hidden,
 /// so the lazy transcript keeps its built rows and coming back is only unhiding.
 struct ChatHost<Token: Equatable, Content: View>: NSViewRepresentable {
@@ -59,24 +79,14 @@ struct ChatHost<Token: Equatable, Content: View>: NSViewRepresentable {
 
     /// The chat's place in the window. The chat in it is shown only once the place has its size and the chat has been
     /// laid out at that size: a chat built before the slot was sized drew one frame squeezed into a corner (19 Nov).
-    final class Slot: NSView {
-        override var isFlipped: Bool { true }
-        weak var shown: NSView?
-        /// Something covers the window (⌘K, a form, a report): the chat takes no clicks, so they reach what covers it.
-        /// A kept chat is an AppKit view of its own, and SwiftUI's dimmed backdrop can't stop clicks reaching it.
-        var covered = false
-        override func hitTest(_ point: NSPoint) -> NSView? { covered ? nil : super.hitTest(point) }
-        override func layout() {
-            super.layout()
-            guard let v = shown, bounds.width > 0, bounds.height > 0 else { return }
-            if v.frame != bounds { v.frame = bounds; v.layoutSubtreeIfNeeded() }
-            if v.isHidden { v.isHidden = false }
-        }
-    }
+    typealias Slot = ChatSlot
+
     func makeNSView(context: Context) -> Slot { Slot() }
     func updateNSView(_ slot: Slot, context: Context) {
         let store = s
-        let v = ChatViews.shared.view(key, token: token) { AnyView(content().environmentObject(store).environmentObject(store.panes).environmentObject(store.railTip)) }
+        let act = ChatViews.shared.activity(key)
+        let v = ChatViews.shared.view(key, token: token) { AnyView(content().environmentObject(store).environmentObject(store.panes).environmentObject(store.railTip).environment(\.chatActivity, act)) }
+        if act.on != active { act.on = active }
         if v.superview !== slot { v.isHidden = true; v.removeFromSuperview(); slot.addSubview(v) }
         // The chat in front stays drawn while its page is away (under the page's opacity): coming back is instant, and a
         // page in its browser never has to wake up (mavis v2's open page cost ~1 s). Only the others are parked.
@@ -108,4 +118,14 @@ struct ChannelToken: Equatable { let w: Workspace; let channel: Workspace.Channe
 extension EnvironmentValues {
     /// Whether chats under here are on screen (Page keeps Messages built, hidden, behind other pages).
     @Entry var chatActive = true
+}
+
+
+extension NSView {
+    /// Inside a kept chat that isn't on screen (left, or covered by a sheet): it mustn't take keys or the keyboard.
+    var inAwayChat: Bool {
+        var v: NSView? = self
+        while let cur = v { if let slot = cur as? ChatSlot, slot.covered { return true }; if cur.isHidden { return true }; v = cur.superview }
+        return false
+    }
 }

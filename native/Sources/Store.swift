@@ -105,6 +105,7 @@ final class Store: ObservableObject {
         // A mouse wheel glides as on mouad.work, everywhere that scrolls up and down (SmoothScroll.swift).
         SmoothScroll.shared.start()
         ClickAway.install()
+        FileNames.shared.prepare()
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [engine] _ in
             MainActor.assumeIsolated { engine.stop() }
         }
@@ -291,7 +292,7 @@ final class Store: ObservableObject {
     }
     /// web: go({ kind: 'dm', id })
     func openChat(_ id: String) {
-        openAgent = id; go(.messages)
+        messagesAgent = id; openAgent = id; go(.messages)
         Task { await loadMessages(id) }
     }
     /// An agent's asks in its own chat (a channel's asks stay in the channel).
@@ -575,7 +576,7 @@ final class Store: ObservableObject {
     func needsCount(_ w: Workspace) -> Int {
         guard w.muted != true else { return 0 }
         let members = Set(w.members ?? [])
-        let asks = approvals.filter { members.contains($0.agentId ?? "") }.count
+        let asks = approvals.filter { members.contains($0.agentId ?? "") && ($0.conv ?? "").hasPrefix("c_\(w.id)_") }.count
         var replies = 0
         if unread(w) {
             for ch in w.channels {

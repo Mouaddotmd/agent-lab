@@ -389,7 +389,7 @@ struct ChatWithPanel<Chat: View>: View {
     @State private var width = SidePanel.width
     /// MAVIS: your column width, nil = half. Read by the body so a drag redraws every frame (a static setting the view
     /// didn't watch left the column stuck while dragging); saved when the drag ends.
-    @State private var mavisW: CGFloat? = SidePanel.mavisWidth
+    @ObservedObject private var width2 = PanelWidth.shared
     @State private var dragFrom: CGFloat?
     /// The panel is in the view (it stays while it slides off).
     @State private var present: Bool
@@ -416,18 +416,18 @@ struct ChatWithPanel<Chat: View>: View {
             let room = max(MV.Resize.sideMin, geo.size.width - MV.Resize.chatMin)
             // Until you drag it, the column takes half (50/50 with the chat); your size is kept after that.
             let half = (geo.size.width - MV.Space.gutter) / 2
-            let w = min(max(MV.Resize.sideMin, mavisW ?? half), room)
+            let w = min(max(MV.Resize.sideMin, width2.w ?? half), room)
             HStack(spacing: 0) {
                 chat.frame(maxWidth: .infinity, maxHeight: .infinity).mvSurface()
                 if present {
                     // The gap is the handle (Chrome's side panel): drag to resize, double-click for the default.
                     MVResizeGap(axis: .horizontal) { dx in
                         if dragFrom == nil { dragFrom = w }
-                        mavisW = min(max(MV.Resize.sideMin, (dragFrom ?? w) - dx), room)
+                        width2.w = min(max(MV.Resize.sideMin, (dragFrom ?? w) - dx), room)
                     } end: {
-                        dragFrom = nil; SidePanel.mavisWidth = mavisW
+                        dragFrom = nil; SidePanel.mavisWidth = width2.w
                     } reset: {
-                        mavisW = nil; SidePanel.mavisWidth = nil
+                        width2.w = nil; SidePanel.mavisWidth = nil
                     }
                     PanelView(panel: panel).frame(width: w).frame(maxHeight: .infinity)
                 }
@@ -589,6 +589,7 @@ private struct PaneView: View {
                         }
                     }
                     .opacity(on ? 1 : 0).allowsHitTesting(on).disabled(!on).accessibilityHidden(!on)
+                    .environment(\.paneTabOn, on)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -843,6 +844,10 @@ struct MVTabStrip: View {
             let fit = max(MV.Browser.tabMin, min(MV.Size.browserTab.width, floor((g.size.width - plus - gaps) / n)))
             let w = min(frozen ?? fit, fit)
             let front = tabs.first { panel.front[$0.pane] == $0.id }?.id
+            // More tabs than fit at their narrowest: they scroll sideways, and + stays at the end, always seen.
+            let overflow = n * MV.Browser.tabMin + gaps > g.size.width - plus
+            HStack(spacing: MV.Browser.tabGap) {
+            ScrollView(.horizontal) {
             HStack(spacing: MV.Browser.tabGap) {
                 ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
                     let next = i + 1 < tabs.count ? tabs[i + 1].id : nil
@@ -865,6 +870,11 @@ struct MVTabStrip: View {
                         }
                     }
                 }
+            }
+            }
+            .scrollDisabled(!overflow).scrollIndicators(.never)
+            .frame(maxWidth: overflow ? g.size.width - plus : nil, alignment: .leading)
+            .fixedSize(horizontal: !overflow, vertical: false)
                 if let new {
                     let full = panel.browserFull && tabs.first?.pane == .browser
                     MVIconButton(icon: "mvPlus", label: full ? "15 tabs is the most" : "New tab") { frozen = nil; new() }
@@ -983,7 +993,9 @@ private struct TabFace: View {
     @ObservedObject var panel: SidePanel
     let tab: PanelTab
     var body: some View {
-        if case .web(let id) = tab.kind { WebFace(page: BrowserPage.of(panel, id)) }
+        // Only a page that already exists: drawing a tab never builds (and loads) one.
+        if case .web(let id) = tab.kind, let page = BrowserPage.existing(id) { WebFace(page: page) }
+        else if case .web = tab.kind { Icon("mvGlobe", MV.Size.iconSmall).foregroundStyle(MV.Ink.t3) }
         else { TabIcon(name: tab.icon, size: 14).foregroundStyle(C.i10) }
     }
 }
@@ -1593,4 +1605,11 @@ struct TabIcon: View {
         if IconData.all[name] != nil || MavisIconData.all[name] != nil { Icon(name, size) }
         else { Image(systemName: name).font(.system(size: size * 0.86, weight: .regular)).frame(width: size, height: size) }
     }
+}
+
+
+/// The side column's width, one for every chat (each kept its own and jumped as you switched).
+@MainActor final class PanelWidth: ObservableObject {
+    static let shared = PanelWidth()
+    @Published var w: CGFloat? = SidePanel.mavisWidth
 }

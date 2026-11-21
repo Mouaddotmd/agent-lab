@@ -57,6 +57,8 @@ import SwiftUI
     }()
     private struct Saved: Codable { var byName: [String: [String]]; var projects: [String] }
     private var loaded = false
+    /// Read at launch (Store), before anything is drawn: never in the middle of drawing a chat.
+    func prepare() { loadSaved() }
     /// Reads the saved index once, before the first word is resolved.
     private func loadSaved() {
         guard !loaded else { return }
@@ -327,6 +329,8 @@ final class ChipLayoutManager: NSLayoutManager {
         }
     }
     override func fillBackgroundRectArray(_ rects: UnsafePointer<NSRect>, count: Int, forCharacterRange range: NSRange, color: NSColor) {
+        // Chips draw their pill in drawBackground; any other fill (a selection) is drawn as it is.
+        if MV.on { super.fillBackgroundRectArray(rects, count: count, forCharacterRange: range, color: color); return }
         guard let ts = textStorage, range.location < ts.length,
               ts.attribute(.commandChip, at: range.location, effectiveRange: nil) != nil
                 || temporaryAttribute(.commandChip, atCharacterIndex: range.location, effectiveRange: nil) != nil else {

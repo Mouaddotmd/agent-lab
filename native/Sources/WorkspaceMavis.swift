@@ -63,7 +63,7 @@ struct MavisWorkspaceSidebar: View {
                                        if s.openAgent == a.id { s.openAgent = nil }; Task { await s.setMember(a.id, w.id, false) }
                                    }]
                               }) {
-                        s.openAgent = a.id; Task { await s.loadMessages(a.id) }
+                        s.openChat(a.id)          // its one chat, in Messages (a second copy here split drafts and the browser)
                     }
                 }
             }
@@ -498,7 +498,7 @@ struct MVChannelDialog: View {
                 .overlay(field.strokeBorder(focused ? MV.Chat.talking : MV.Stroke.boxRest, lineWidth: focused ? MV.Stroke.boxTypingWidth : MV.Stroke.boxRestWidth))
                 if asksAgents {
                     Text("Who answers").font(F.font(MV.Text.control, .medium)).foregroundStyle(MV.Ink.t2).padding(.top, MV.Space.section).padding(.bottom, MV.Space.labelGap)
-                    VStack(spacing: MV.Space.rowGap) {
+                    ScrollView { VStack(spacing: MV.Space.rowGap) {
                         choice(icon: AnyView(Icon("mvSparkle", MV.Size.icon).foregroundStyle(MV.Ink.t2).frame(width: MV.Workspace.crewFace, height: MV.Workspace.crewFace)),
                                name: "Assistant", detail: "A plain session", on: agents.isEmpty, radio: true) { agents = [] }
                         ForEach(s.agents) { a in
@@ -508,7 +508,9 @@ struct MVChannelDialog: View {
                             }
                         }
                     }
-                    .padding(MV.Space.xs)
+                    .padding(MV.Space.xs) }
+                    .scrollIndicators(.never)
+                    .frame(maxHeight: MV.Launcher.width / 2)            // many agents scroll; the dialog stays on screen
                     .background(field.fill(MV.Tone.page))
                 }
                 HStack(spacing: MV.Space.labelGap) {

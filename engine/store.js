@@ -20,6 +20,11 @@ export function normalize(state) {
     if (!Array.isArray(w.members)) w.members = state.agents.filter((a) => a.workspace === w.id).map((a) => a.id);
     w.members = [...new Set(w.members)].filter((id) => ids.has(id));
     if (!Array.isArray(w.categories) || !w.categories.some((c) => c.channels?.length)) w.categories = GENERAL();
+    // Old channels named one answering agent (agent): it's the first of their agents now; gone agents leave.
+    for (const c of w.categories) for (const ch of c.channels || []) {
+      if (typeof ch.agent === 'string') { ch.agents = [...new Set([ch.agent, ...(ch.agents || [])])]; delete ch.agent; }
+      if (Array.isArray(ch.agents)) ch.agents = ch.agents.filter((id) => ids.has(id));
+    }
   }
   return state;
 }
@@ -205,6 +210,8 @@ export class Store {
     if (!this.agent(agentId)) throw new Error('That agent no longer exists.');
     w.members = (w.members || []).filter((m) => m !== agentId);
     if (on) w.members.push(agentId);
+    // Out of the workspace: out of its channels too (it kept answering there).
+    else for (const c of w.categories || []) for (const ch of c.channels || []) if (Array.isArray(ch.agents)) ch.agents = ch.agents.filter((a) => a !== agentId);
     this.save();
     return w;
   }

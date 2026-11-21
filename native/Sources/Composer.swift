@@ -34,7 +34,9 @@ struct Suggestion: Identifiable, Equatable {
     var insert: String
     /// What a command takes after its name; none means ↵ sends it at once.
     var hint = ""
-    var id: String { "\(kind)/" + insert }
+    /// Tells apart two suggestions that insert the same words (two agents with one name).
+    var key = ""
+    var id: String { "\(kind)/" + insert + "/" + key }
     var section: String {
         switch kind {
         case .command: "Commands"
@@ -96,6 +98,10 @@ enum PlusItem: Int, CaseIterable {
     }
 
     @Published var text = ""
+    /// The @ file ranking under way (a newer keystroke cancels it).
+    private var fileSearch: Task<Void, Never>?
+    /// Where its box is in the window (SwiftUI's global space): a click inside the box keeps the keyboard.
+    var boxRect: CGRect = .zero
     @Published var images: [String] = []
     @Published var files: [String] = []
     @Published var suggestions: [Suggestion] = []
@@ -209,19 +215,19 @@ enum PlusItem: Int, CaseIterable {
             let value: Any = name.isEmpty || name == "default" ? NSNull() : name
             Task { try? await store?.updateAgent(agent.id, ["model": value]) }
             store?.toast = "\(agent.name) now uses \(name.isEmpty ? "its default model" : name)."
-            clear()
+            clearWords()
             return
         }
         // `/btw question`: asked in a side chat, not in this one. `/handoff`: pass this chat to another agent.
         if let agent, words == "/btw" || words.hasPrefix("/btw ") {
             DraftStore.shared.remember(words)
             store?.openSideChat(agent, question: String(words.dropFirst(4)))
-            clear()
+            clearWords()
             return
         }
         if let agent, words == "/handoff" {
             store?.handingOff = agent.id
-            clear()
+            clearWords()
             return
         }
         DraftStore.shared.remember(words)
@@ -229,6 +235,8 @@ enum PlusItem: Int, CaseIterable {
         clear()
     }
 
+    /// Only the words (a command ran): what's attached stays for the next message.
+    private func clearWords() { set("", caretAtEnd: true); save() }
     private func clear() {
         images = []
         files = []
@@ -452,7 +460,7 @@ enum PlusItem: Int, CaseIterable {
                 }
                 for id in members {
                     guard let a = store.agents.first(where: { $0.id == id }), Rank.score(q, name: a.name, about: "") != nil else { continue }
-                    found.append(Suggestion(kind: .member, label: a.name, detail: a.job.map { Words.line($0, 60) } ?? "", insert: "@\(a.name) "))
+                    found.append(Suggestion(kind: .member, label: a.name, detail: a.job.map { Words.line($0, 60) } ?? "", insert: "@\(a.name) ", key: a.id))
                 }
             }
             if let agentID, let helpers = store.catalogs[agentID]?.agents {
@@ -460,15 +468,27 @@ enum PlusItem: Int, CaseIterable {
                     found.append(Suggestion(kind: .helper, label: h.name, detail: Words.line(h.about, 80), insert: "@agent-\(h.name) "))
                 }
             }
-            let paths = FileIndex.shared.search(q, in: folder)
-            let folders = paths.filter { $0.hasSuffix("/") }.prefix(5)
-            for path in folders + paths.filter({ !$0.hasSuffix("/") }) {
-                let isFolder = path.hasSuffix("/")
-                let trimmed = isFolder ? String(path.dropLast()) : path
-                found.append(Suggestion(kind: isFolder ? .folder : .file, label: (trimmed as NSString).lastPathComponent,
-                                        detail: (trimmed as NSString).deletingLastPathComponent, insert: "@\(path) "))
+            // People and helpers at once; files join when they're ranked, off the main thread.
+            let range = NSRange(location: start, length: (token as NSString).length)
+            show(found, range: range)
+            guard let files = FileIndex.shared.files(folder) else { return }
+            let base = found, typed = text
+            fileSearch?.cancel()
+            fileSearch = Task.detached(priority: .userInitiated) { [weak self] in
+                let paths = FileIndex.rank(q, files)
+                await MainActor.run {
+                    guard let self, !Task.isCancelled, self.text == typed else { return }
+                    var all = base
+                    let folders = paths.filter { $0.hasSuffix("/") }.prefix(5)
+                    for path in folders + paths.filter({ !$0.hasSuffix("/") }) {
+                        let isFolder = path.hasSuffix("/")
+                        let trimmed = isFolder ? String(path.dropLast()) : path
+                        all.append(Suggestion(kind: isFolder ? .folder : .file, label: (trimmed as NSString).lastPathComponent,
+                                              detail: (trimmed as NSString).deletingLastPathComponent, insert: "@\(path) "))
+                    }
+                    self.show(all, range: range)
+                }
             }
-            show(found, range: NSRange(location: start, length: (token as NSString).length))
             return
         }
         suggestions = []
@@ -591,9 +611,20 @@ enum Attachments {
     private var listing: Set<String> = []
     /// Bumped when a folder finishes listing, so an open `@` list fills in.
     var onListed: (() -> Void)?
+    /// Posted when a folder's files are listed: every box showing @ files fills in (one closure served only the newest).
+    static let listed = Notification.Name("agentlab.fileIndexListed")
 
     func search(_ query: String, in folder: String) -> [String] {
-        guard let files = lists[folder] else { build(folder); return [] }
+        guard let files = files(folder) else { return [] }
+        return Self.rank(query, files)
+    }
+    /// A folder's listed files (nil while it's being listed, which starts the listing).
+    func files(_ folder: String) -> [String]? {
+        guard let files = lists[folder] else { build(folder); return nil }
+        return files
+    }
+    /// The best 40 for what you typed: pure, so it runs off the main thread (20,000 paths on every keystroke stalled it).
+    nonisolated static func rank(_ query: String, _ files: [String]) -> [String] {
         let q = query.lowercased()
         guard !q.isEmpty else { return Array(files.prefix(40)) }
         var scored: [(Int, String)] = []
@@ -624,7 +655,7 @@ enum Attachments {
                 }
             }
             let list = found.sorted { $0.count < $1.count }
-            await MainActor.run { FileIndex.shared.lists[folder] = list; FileIndex.shared.listing.remove(folder); FileIndex.shared.onListed?() }
+            await MainActor.run { FileIndex.shared.lists[folder] = list; FileIndex.shared.listing.remove(folder); FileIndex.shared.onListed?(); NotificationCenter.default.post(name: FileIndex.listed, object: nil) }
         }
     }
 }
@@ -676,8 +707,10 @@ struct ComposerField: NSViewRepresentable {
         scroll.documentView = text
         context.coordinator.text = text
         text.string = model.text
-        DispatchQueue.main.async { context.coordinator.measure(); text.window?.makeFirstResponder(text) }
-        FileIndex.shared.onListed = { [weak model] in model?.refresh() }
+        DispatchQueue.main.async { context.coordinator.measure(); if !text.inAwayChat { text.window?.makeFirstResponder(text) } }
+        context.coordinator.listedObserver = NotificationCenter.default.addObserver(forName: FileIndex.listed, object: nil, queue: .main) { [weak model] _ in
+            MainActor.assumeIsolated { if model?.suggestions.isEmpty == false { model?.refresh() } }
+        }
         return scroll
     }
 
@@ -704,6 +737,8 @@ struct ComposerField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
+        var listedObserver: NSObjectProtocol?
+        deinit { if let listedObserver { NotificationCenter.default.removeObserver(listedObserver) } }
         let model: ComposerModel
         weak var text: ComposerTextView?
         var revision = -1
@@ -808,8 +843,10 @@ final class ComposerTextView: NSTextView {
 /// A menu's surface, as the Mode card's: the panel grey, its outline, a deep soft shadow.
 extension View {
     func menuCard() -> some View {
-        background(RoundedRectangle(cornerRadius: R.card).fill(C.v1))
-            .overlay(RoundedRectangle(cornerRadius: R.card).strokeBorder(C.edgeControl, lineWidth: 1))
+        // MAVIS: the system's menu (radius 14, its fill, the surface hairline, no shadow).
+        background(RoundedRectangle(cornerRadius: MV.on ? MV.Menu.radius : R.card, style: .continuous).fill(MV.on ? MV.Menu.fill : C.v1))
+            .overlay(RoundedRectangle(cornerRadius: MV.on ? MV.Menu.radius : R.card, style: .continuous)
+                .strokeBorder(MV.on ? MV.Tone.hairline : C.edgeControl, lineWidth: MV.on ? MV.Stroke.boxRestWidth : 1))
             .floatShadow()
     }
 }
@@ -818,8 +855,9 @@ extension View {
 struct SuggestionList: View {
     @ObservedObject var model: ComposerModel
     static func height(_ items: [Suggestion]) -> CGFloat {
+        let row: CGFloat = MV.on ? MV.Menu.item + MV.Space.rowGap : 42
         let headers = CGFloat(Set(items.map(\.section)).count) * 28
-        return min(CGFloat(items.count) * 42 + headers, 6.5 * 42 + 28) + 8
+        return min(CGFloat(items.count) * row + headers, 6.5 * row + 28) + 8
     }
     var body: some View {
         ScrollViewReader { reader in
@@ -829,17 +867,18 @@ struct SuggestionList: View {
                         if i == 0 || model.suggestions[i - 1].section != s.section {
                             Text(s.section).font(F.font(12, .medium)).foregroundStyle(C.i10).padding(.horizontal, 10).frame(height: 26, alignment: .bottom)
                         }
-                        HStack(spacing: 12) {
-                            Image(systemName: s.symbol).font(.system(size: 14)).foregroundStyle(i == model.highlighted ? C.i12 : C.i10).frame(width: 20)
-                            Text(s.label).font(F.font(14, .medium)).foregroundStyle(C.i12).lineLimit(1).layoutPriority(2)
-                            if !s.hint.isEmpty { Text(Words.line(s.hint, 24)).font(F.font(12, .regular)).foregroundStyle(C.i9).lineLimit(1).layoutPriority(1) }
-                            Text(s.detail).font(F.font(12, .regular)).foregroundStyle(C.i10).lineLimit(1)
+                        let lit = i == model.highlighted
+                        HStack(spacing: MV.on ? MV.Space.inset : 12) {
+                            Image(systemName: s.symbol).font(.system(size: MV.on ? MV.Text.footer : 14)).foregroundStyle(MV.on ? (lit ? MV.Ink.t1 : MV.Ink.t3) : lit ? C.i12 : C.i10).frame(width: 20)
+                            Text(s.label).font(F.font(MV.on ? MV.Menu.itemText : 14, .medium)).foregroundStyle(MV.on ? (lit ? Color.white : MV.Ink.t1) : C.i12).lineLimit(1).layoutPriority(2)
+                            if !s.hint.isEmpty { Text(Words.line(s.hint, 24)).font(F.font(12, .regular)).foregroundStyle(MV.on ? MV.Ink.t3 : C.i9).lineLimit(1).layoutPriority(1) }
+                            Text(s.detail).font(F.font(12, .regular)).foregroundStyle(MV.on ? (lit ? MV.Accent.selectedText : MV.Ink.t3) : C.i10).lineLimit(1)
                                 .truncationMode([.file, .folder].contains(s.kind) ? .head : .tail)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 10).frame(height: 40)
+                        .padding(.horizontal, MV.on ? MV.Space.inset : 10).frame(height: MV.on ? MV.Menu.item : 40)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(i == model.highlighted ? C.v4 : .clear))
+                        .background(RoundedRectangle(cornerRadius: MV.on ? MV.Radius.tile : 10, style: .continuous).fill(MV.on ? (lit ? MV.Accent.selected : .clear) : lit ? C.v4 : .clear))
                         .contentShape(Rectangle())
                         .clipped()
                         .onTapGesture { model.highlighted = i; model.submit() }
@@ -1061,6 +1100,11 @@ struct ComposerOverlays: ViewModifier {
                 let owner: NSView = tv.isFieldEditor ? ((tv.delegate as? NSView) ?? tv) : (tv.enclosingScrollView ?? tv)
                 let hit = content.hitTest(content.superview?.convert(e.locationInWindow, from: nil) ?? e.locationInWindow)
                 if let hit, hit === owner || hit === tv || hit.isDescendant(of: owner) { return }
+                // Its own box (Send, the mic, the paperclip): the keyboard stays.
+                if let box = (tv as? ComposerTextView)?.model?.boxRect, box != .zero {
+                    let p = e.locationInWindow
+                    if box.contains(CGPoint(x: p.x, y: content.bounds.height - p.y)) { return }
+                }
                 DispatchQueue.main.async { if w.firstResponder === tv { w.makeFirstResponder(nil) } }
             }
             return e
@@ -1072,6 +1116,12 @@ struct ComposerOverlays: ViewModifier {
 /// Your message's attached files, out of its words: the trailing "@/path" lines (also older "@/a @/b" on one line),
 /// each an existing file. The bubble shows the words; the files show as tiles above it.
 enum SentFiles {
+    /// split, once per message text (it checks the disk for every file line).
+    @MainActor private static var memo: [String: (words: String, files: [String])] = [:]
+    @MainActor static func cached(_ text: String) -> (words: String, files: [String]) {
+        if let m = memo[text] { return m }
+        let r = split(text); if memo.count > 500 { memo.removeAll() }; memo[text] = r; return r
+    }
     static func split(_ text: String) -> (words: String, files: [String]) {
         var lines = text.components(separatedBy: "\n")
         var files: [String] = []

@@ -469,15 +469,14 @@ private struct BrowserHost: NSViewRepresentable {
 
     func setShowing(_ on: Bool) {
         if on, web.superview !== box, let box { web.removeFromSuperview(); web.frame = box.bounds; web.autoresizingMask = [.width, .height]; box.addSubview(web) }
-        web.isHidden = !on
         guard on != showing else { return }
         showing = on
         if !on {
-            let size = web.frame.size
-            web.removeFromSuperview()
-            web.frame.size = size              // still laid out at its size, for the agent's reading and pictures
             if picking { stopPicking() }
             if let w = web.window, let r = w.firstResponder as? NSView, r === web || r.isDescendant(of: web) { w.makeFirstResponder(nil) }
+            // Parked in the window, out of sight, still laid out at its size and drawing: coming back is instant (taken
+            // out, it painted blank first) and the agent can still read it and take its picture.
+            if let box { BrowserPage.park(web, from: box) }
         }
     }
 
@@ -634,6 +633,8 @@ private struct BrowserHost: NSViewRepresentable {
     /// The page's own icon (its <link rel=icon>, else /favicon.ico), fetched once per site.
     private func loadFavicon() {
         guard let host = web.url?.host(), host != faviconHost else { return }
+        if let kept = Favicons.shared.icons[Favicons.key(host)] { favicon = kept; faviconHost = host; return }
+        favicon = nil; faviconHost = nil                    // a new site never wears the last one's icon
         let js = "(() => { const l = [...document.querySelectorAll('link[rel~=icon], link[rel=apple-touch-icon]')].map(x => x.href).filter(Boolean); return l[0] || (location.origin + '/favicon.ico'); })()"
         web.evaluateJavaScript(js, in: nil, in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
@@ -644,6 +645,7 @@ private struct BrowserHost: NSViewRepresentable {
                 Task { [weak self] in
                     for u in tries {
                         guard let (data, _) = try? await URLSession.shared.data(from: u), let img = NSImage(data: data), img.size.width > 0 else { continue }
+                        guard self?.web.url?.host() == host else { return }        // moved on meanwhile
                         self?.favicon = img; self?.faviconHost = host
                         Favicons.shared.keep(host, img)
                         return

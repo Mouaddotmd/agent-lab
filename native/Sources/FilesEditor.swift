@@ -176,6 +176,7 @@ final class LineIndex {
 /// matches of `find` marked without touching the text.
 struct CodeEditor: NSViewRepresentable {
     @ObservedObject var doc: FileDoc
+    @Environment(\.paneTabOn) private var tabOn
     var find = ""
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
@@ -224,6 +225,7 @@ struct CodeEditor: NSViewRepresentable {
         return scroll
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
+        if scroll.isHidden == tabOn { scroll.isHidden = !tabOn }        // behind another tab: no I-beam over it
         guard let view = scroll.documentView as? NSTextView, let storage = view.textStorage else { return }
         let c = context.coordinator
         c.doc = doc

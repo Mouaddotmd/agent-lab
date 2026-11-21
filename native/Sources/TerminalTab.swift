@@ -541,9 +541,10 @@ extension Notification.Name {
 /// before the page loads, so nothing comes from the network), in the app's colours.
 enum TermPage {
     static let folder: URL? = {
-        guard let r = Bundle.main.resourceURL?.appendingPathComponent("terminal"),
-              FileManager.default.fileExists(atPath: r.appendingPathComponent("xterm.js").path) else { return nil }
-        return r
+        // The app's own; a test tool run from build/ uses the installed app's.
+        let tries = [Bundle.main.resourceURL?.appendingPathComponent("terminal"),
+                     URL(fileURLWithPath: NSHomeDirectory() + "/Applications/Agent Lab Native.app/Contents/Resources/terminal")].compactMap { $0 }
+        return tries.first { FileManager.default.fileExists(atPath: $0.appendingPathComponent("xterm.js").path) }
     }()
     static let scripts: [String] = {
         guard let dir = folder else { return [] }

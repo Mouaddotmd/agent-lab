@@ -1,5 +1,21 @@
 # Stress test: 21 Nov 2026
 
+## Fix pass (same day)
+
+Fixed: 1–37, 40–46, and test gaps T1–T4. Every test passes (chattest, navtest, consistency, enginetest, paneltest,
+resizetest, scrolltest, tiptest, menuclick, boxtest, handstest, chatperf, themeshot), now run in the MAVIS theme.
+
+Measured after (real mavis v2 chat): open a chat 100 ms → 30–40 ms; chat to chat worst 112 → 37 ms; Review → Messages
+21 → 11 ms; window resize on Messages worst 25 → 17 ms, Home worst 21 → 15 ms; resize step worst 12.4 → 8.7 ms.
+
+Still open:
+- 38: Home re-evaluates on any store change (~11 ms, under the 16.7 ms budget, but it adds up while an agent streams).
+- 39: switching theme takes ~40 ms (one hitch, once).
+- T5: no tests yet for channels, chips, attachments, the omnibox or the tab strip.
+
+Fix notes: a paging regression found by paneltest in this pass (older messages loading during a rewrap) was fixed by
+loading only on your own scroll; paneltest now finds the chat by position (the file tree could be taller).
+
 Everything the app's test tools could exercise, real-window screenshots in the MAVIS theme, timings on the real mavis v2
 chat, and an independent read of the code changed this week. Nothing here is fixed yet unless it says so.
 

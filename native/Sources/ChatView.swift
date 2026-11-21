@@ -36,6 +36,7 @@ struct ChatPane: View {
         .modifier(MVDropZone(key: key))
         .findInChat(agent.id)
         .environment(\.chatAgentId, agent.id)
+        .environment(\.chatConv, agent.id)
         .onAppear { LiveWords.shared.update(rows); markRead() }
         .onChange(of: rows) { _, r in LiveWords.shared.update(r); markRead() }
         .onChange(of: s.openAgent) { _, _ in markRead() }
@@ -131,7 +132,7 @@ struct ChatTranscript: View, Equatable {
     /// How many of the latest rows are drawn (older ones one click away). Real rows only, never estimated: a lazy list
     /// guessed the heights of rows it hadn't built, and opening a long chat at its end showed black until you scrolled.
     @State private var shownCount = ChatTranscript.page
-    static let page = 40
+    static let page = 24        // what a chat opens with (more join as you scroll up): opening and resizing cost only this
     /// Scrolled this close to the top: the next earlier page joins.
     static let nearTop: CGFloat = 400
     /// Find in the chat and jumps to a message (ConvoModel.swift). Changes only when you find or jump.
@@ -197,11 +198,20 @@ struct ChatTranscript: View, Equatable {
             .onAppear { follower.tell = { y in var t = Transaction(); t.disablesAnimations = true; withTransaction(t) { position.scrollTo(y: y) } } }
 
             .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y < Self.nearTop } action: { _, near in
-                guard near, rows.count > shownCount else { return }
+                // Only your own scrolling up brings earlier rows: a rewrap (the panel opening) can pass near the top for
+                // a frame, and paging then threw the chat 2,384 pt off its end (paneltest).
+                guard near, rows.count > shownCount, !follower.following, follower.userMoving, let sv = follower.scrollView else { return }
+                // The row at the top now, and where it is on screen: after the earlier rows join above, the view moves by
+                // exactly the height they added, so nothing you're reading shifts.
                 let keep = rows[max(0, rows.count - shownCount)].id
+                let before = follower.frame(of: keep)?.minY, y0 = sv.contentView.bounds.origin.y
                 var t = Transaction(); t.disablesAnimations = true
                 withTransaction(t) { shownCount += Self.page }
-                DispatchQueue.main.async { withTransaction(t) { proxy.scrollTo(keep, anchor: .top) } }
+                DispatchQueue.main.async {
+                    sv.layoutSubtreeIfNeeded()
+                    guard let before, let after = follower.frame(of: keep)?.minY else { return }
+                    sv.contentView.scroll(to: NSPoint(x: 0, y: y0 + (after - before))); sv.reflectScrolledClipView(sv.contentView)
+                }
             }
             .onScrollPhaseChange { _, phase in
                 let user = phase == .interacting || phase == .decelerating
@@ -392,11 +402,28 @@ final class Follower: ObservableObject {
         clip.postsBoundsChangedNotifications = true
         clip.postsFrameChangedNotifications = true
         watching = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { [weak self] _ in
-            MainActor.assumeIsolated { if self?.moving == false { self?.restrain() }; self?.wake?(); self?.hover(); ScrollMeter.shared.moved(view) }
+            MainActor.assumeIsolated { if self?.moving == false { self?.restrain() }; self?.wake?(); self?.hover(); if ScrollMeter.on { ScrollMeter.shared.moved(view) } }
         }
         // The content's height changes in the same layout pass as a new width (the words rewrap): pinned to the end
         // right there, before anything is drawn. Heard only from the clip's bounds, the first frame of a panel opening
         // was drawn scrolled up and jumped back on the next (17 Nov).
+        // The view gets shorter (the box grew: attachments, more lines): following, it stays at the end.
+        if let watchingView { NotificationCenter.default.removeObserver(watchingView) }
+        if let v = view {
+            v.postsFrameChangedNotifications = true
+            lastHeight = v.frame.height
+            watchingView = NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: v, queue: nil) { [weak self, weak v] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let v else { return }
+                    let shorter = v.frame.height < self.lastHeight - 0.5
+                    self.lastHeight = v.frame.height
+                    // Only the box growing (the view got shorter); a width change is the follower's own job.
+                    guard shorter, self.following, let doc = v.documentView else { return }
+                    let end = max(0, doc.frame.height - v.contentView.bounds.height)
+                    if abs(v.contentView.bounds.origin.y - end) > 0.5 { v.contentView.scroll(to: NSPoint(x: 0, y: end)); v.reflectScrolledClipView(v.contentView) }
+                }
+            }
+        }
         if let doc = view?.documentView {
             doc.postsFrameChangedNotifications = true
             watchingDoc = NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: doc, queue: nil) { [weak self] _ in
@@ -404,7 +431,10 @@ final class Follower: ObservableObject {
             }
         }
     }
-    private var watchingDoc: NSObjectProtocol?, gliding: NSObjectProtocol?
+    private var watchingDoc: NSObjectProtocol?, gliding: NSObjectProtocol?, watchingView: NSObjectProtocol?
+    private var lastHeight: CGFloat = 0
+    /// Where a row sits in the conversation (for keeping your place when earlier rows join above).
+    func frame(of id: String) -> CGRect? { rowFrames[id] }
     /// The chat's one hover tracker: the row under the pointer (by the rows' known places), lit; checked on every mouse
     /// move and every scroll (rows pass under a still pointer).
     @MainActor func hover() {
@@ -522,7 +552,11 @@ final class Follower: ObservableObject {
         guard let view = scrollView, let doc = view.documentView else { return 0 }
         return doc.frame.height + view.contentInsets.bottom - view.contentView.bounds.maxY
     }
-    deinit { if let events { NSEvent.removeMonitor(events) } }
+    deinit {
+        if let events { NSEvent.removeMonitor(events) }
+        // Every observer goes with it (they outlived dropped chats).
+        for o in [watching, watchingDoc, gliding, watchingView].compactMap({ $0 }) { NotificationCenter.default.removeObserver(o) }
+    }
     func readEnds() {
         let isAway = liveFromEnd > 80 && !following
         if away != isAway { away = isAway }
@@ -640,7 +674,7 @@ struct ChatRowView: View, Equatable {
                 if MV.on {
                     // MAVIS: your turn is a blue bubble on the right (22% of the accent), radius 20, padding 10 16.
                     // Pictures and files sit above the bubble, on the right (Claude's, ChatGPT's); the bubble holds only words.
-                    let sent = SentFiles.split(text)
+                    let sent = SentFiles.cached(text)
                     let words = sent.words
                     if !images.isEmpty || !sent.files.isEmpty {
                         MVSentImages(paths: images + sent.files).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, MV.Space.sm)
@@ -798,13 +832,18 @@ struct TurnSlot: View {
 struct LiveTurn: View {
     @EnvironmentObject var s: Store
     @ObservedObject private var words = LiveWords.shared
+    @Environment(\.chatConv) private var conv
     let agentId: String; let turn: Turn
     /// Commands it has running (a long one, or one left in the background): the line names them while nothing else runs.
     @ObservedObject var work: AgentWork
     var body: some View {
-        let run = s.runs["agent:\(agentId)"] ?? s.runs.values.first { $0.agentId == agentId && ($0.turn == nil || turn.id.hasPrefix($0.turn!)) }
-        TurnBody(agentId: agentId, turn: turn, shown: words.count(turn), approvals: turn.running ? s.approvals.filter { $0.agentId == agentId } : [],     // its asks wherever it runs (a channel's too)
-                 activity: turn.running ? run?.activity : nil, command: turn.running ? work.commands.last?.line : nil)
+        // This conversation's run and asks only (an agent can work in its DM and a channel at once).
+        let here = conv ?? agentId
+        let run = s.runs.values.first { $0.agentId == agentId && ($0.conversation ?? agentId) == here }
+        TurnBody(agentId: agentId, turn: turn, shown: words.count(turn),
+                 approvals: turn.running ? s.approvals.filter { $0.agentId == agentId && ($0.conv ?? agentId) == here } : [],
+                 activity: turn.running ? run?.activity : nil,
+                 command: turn.running && here == agentId ? work.commands.last?.line : nil)
     }
 }
 
@@ -1468,7 +1507,7 @@ struct MVChatBox: View {
     @State private var permOpen = false
     @State private var boxHover = false
     var body: some View {
-        let has = !model.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.images.isEmpty
+        let has = !model.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.images.isEmpty || !model.files.isEmpty
         let shape = RoundedRectangle(cornerRadius: MV.Radius.chatBox, style: .continuous)
         let talking = dictation.active
         return VStack(alignment: .leading, spacing: MV.Space.labelGap) {
@@ -1516,6 +1555,7 @@ struct MVChatBox: View {
             .overlay(shape.strokeBorder(talking ? MV.Chat.talking : boxHover ? MV.Stroke.boxHover : MV.Stroke.boxRest,
                                         lineWidth: talking ? MV.Stroke.boxTypingWidth : MV.Stroke.boxRestWidth))
             .onHover { boxHover = $0 }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.boxRect = $0 }
             .modifier(ComposerOverlays(model: model))
             .onReceive(NotificationCenter.default.publisher(for: MVDropZone.dropped)) { n in
                 guard n.userInfo?["key"] as? String == dropKey, let paths = n.userInfo?["paths"] as? [String] else { return }
@@ -1568,6 +1608,8 @@ struct Shimmer: View {
     let text: String; let font: Font
     var base: Color = MV.Motion.shimmerBase; var band: Color = Color.white
     @Environment(\.accessibilityReduceMotion) private var still
+    @Environment(\.chatActive) private var pageOn
+    @Environment(\.chatActivity) private var chat
     var body: some View {
         let words = Text(text).font(font).lineLimit(1).truncationMode(.middle)
         if still {
@@ -1575,7 +1617,8 @@ struct Shimmer: View {
         } else {
             // Driven by the display's own clock (TimelineView), never by a SwiftUI animation: the line it sits in turns
             // animations off (and is rebuilt every second), which froze the old animated shimmer on its first frame.
-            TimelineView(.animation) { ctx in
+            // Paused where it can't be seen (a page or a chat you've left): no frame-rate work for nothing.
+            TimelineView(.animation(minimumInterval: nil, paused: !pageOn || chat?.on == false)) { ctx in
                 let t = ctx.date.timeIntervalSinceReferenceDate
                 let phase = CGFloat(t.truncatingRemainder(dividingBy: MV.Motion.shimmer) / MV.Motion.shimmer)
                 words.foregroundStyle(base)
@@ -1601,6 +1644,8 @@ struct Shimmer: View {
 /// longer than the display's own interval by half again). Costs one display link while scrolling, nothing at rest.
 @MainActor final class ScrollMeter: NSObject {
     static let shared = ScrollMeter()
+    /// Off unless asked for: `defaults write dev.agentlab.native scrollMeter -bool YES`.
+    static let on = UserDefaults.standard.bool(forKey: "scrollMeter")
     private var link: CADisplayLink?
     private var last: CFTimeInterval = 0
     private var gaps: [CFTimeInterval] = []
@@ -1701,7 +1746,7 @@ private struct MVSentTile: View {
         let shape = RoundedRectangle(cornerRadius: MV.Radius.card, style: .continuous)
         let name = (path as NSString).lastPathComponent, ext = (path as NSString).pathExtension.uppercased()
         Group {
-            if let image = thumb ?? (Attachments.isImage(path) ? NSImage(contentsOfFile: path) : nil) {
+            if let image = thumb ?? (Attachments.isImage(path) ? Thumbs.image(path) : nil) {
                 Image(nsImage: image).resizable().scaledToFill()
                     .overlay(alignment: .bottomLeading) {
                         if !Attachments.isImage(path) {
@@ -1745,7 +1790,7 @@ struct MVAttachments: View {
             ForEach(model.images, id: \.self) { p in
                 MVAttachmentTile(remove: { model.remove(p) }) {
                     Group {
-                        if let image = NSImage(contentsOfFile: p) { Image(nsImage: image).resizable().scaledToFill() }
+                        if let image = Thumbs.image(p) { Image(nsImage: image).resizable().scaledToFill() }
                         else { Icon("mvFile", MV.Size.icon).foregroundStyle(MV.Ink.t3) }
                     }
                     .frame(width: MV.Chat.attach, height: MV.Chat.attach)
@@ -1811,5 +1856,21 @@ struct MVBubble: View {
                 .background(RoundedRectangle(cornerRadius: MV.Chat.bubbleRadius, style: .continuous).fill(MV.Accent.bubble))
         }
         .padding(.vertical, MV.Space.sm)
+    }
+}
+
+
+/// Pictures shown small (sent, attached): read once at a small size and kept, never decoded full size in a redraw.
+@MainActor enum Thumbs {
+    private static let cache = NSCache<NSString, NSImage>()
+    static func image(_ path: String) -> NSImage? {
+        if let i = cache.object(forKey: path as NSString) { return i }
+        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                                                    kCGImageSourceThumbnailMaxPixelSize: MV.Chat.sent * 2,
+                                                                    kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+        let img = NSImage(cgImage: cg, size: .zero)
+        cache.setObject(img, forKey: path as NSString)
+        return img
     }
 }

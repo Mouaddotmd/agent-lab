@@ -142,7 +142,8 @@ enum Omni {
 
     private func fetch(_ q: String) {
         fetching?.cancel()
-        guard !q.isEmpty, !q.contains("://") else { return }
+        // Only what reads as a search goes to Google: a question for the agent stays on this Mac.
+        guard !q.isEmpty, !q.contains("://"), q.split(separator: " ").count <= 6, !q.hasSuffix("?") else { return }
         fetching = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }

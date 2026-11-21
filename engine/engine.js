@@ -326,7 +326,9 @@ export class Engine {
     const sent = this.store.addMessage(conv, { role: 'user', text, ...(images.length ? { images } : {}) });
     this.emit({ type: 'messages', agentId: conv });
     const granted = (Array.isArray(ch.agents) ? ch.agents : ch.agent ? [ch.agent] : []).map((id) => this.store.agent(id)).filter((a) => a && !a.hidden);
-    const tags = tagged(text, granted);
+    // @ reaches any member (a tag brings them in); untagged, the channel's own agents answer.
+    const members = (ws.members || []).map((id) => this.store.agent(id)).filter((a) => a && !a.hidden);
+    const tags = tagged(text, [...new Map([...granted, ...members].map((a) => [a.id, a])).values()]);
     const answering = tags.length ? tags : granted.length ? [granted[0]] : [this.store.assistant()];
     for (const agent of answering) {
       const key = channelRunKey(conv, agent.id);
@@ -390,7 +392,8 @@ export class Engine {
       // Keep a small ledger of every run (when, how long, what it cost when the tool reports it) for Usage.
       const now = Date.now(), cur = this.store.agent(agentId);
       const ledger = [...(cur?.ledger || []), { at: now, ms: now - run.startedAt, cost: outcome.cost ?? null, ok: !outcome.error }].slice(-500);
-      this.store.updateAgent(agentId, { ledger, last: { state: outcome.error ? (outcome.stopped ? 'stopped' : 'failed') : 'done', at: now, cost: outcome.cost ?? null, seen: false } });
+      // A channel's run never changes the agent's own chat status (done / stopped) in Messages.
+      this.store.updateAgent(agentId, by ? { ledger } : { ledger, last: { state: outcome.error ? (outcome.stopped ? 'stopped' : 'failed') : 'done', at: now, cost: outcome.cost ?? null, seen: false } });
       // What the DM has used so far (tokens, cost, how full its context is): the Context tab reads it.
       if (!by) this.#noteUsage(agentId, outcome);
       this.emit({ type: 'messages', agentId: conv });
@@ -937,8 +940,9 @@ export class Engine {
 
   /** A Codex agent's step on the app's panes (hands.js): its mode decides, as for a command. true, or why not. */
   async gateHands(agentId, toolName, input) {
-    agentId = String(agentId).split('@')[0];
-    const run = [...this.runs.values()].find((r) => r.agentId === agentId && r.operator === 'codex' && !r.ended);
+    // The exact run that asked ("a1" its DM, "a1@<conv>" a channel): an agent can run in both at once.
+    const full = String(agentId);
+    const run = [...this.runs.values()].find((r) => handsId(r) === full && r.operator === 'codex' && !r.ended);
     if (!run) return 'This agent is not working right now.';
     const answer = await this.#approval(run, toolName, input, null, [], run.target || {});
     return answer.behavior === 'allow' ? true : answer.message || 'Not allowed.';

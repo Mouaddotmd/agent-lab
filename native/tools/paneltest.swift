@@ -24,7 +24,12 @@ import AppKit
         let panel = SidePanel.of(agent, home: store.home)
         if panel.open { panel.toggle(); spin(0.6) }
         func scrolls(_ v: NSView) -> [NSScrollView] { (v as? NSScrollView).map { [$0] } ?? [] + v.subviews.flatMap(scrolls) }
-        func chat() -> NSScrollView? { scrolls(host).filter { !$0.isHiddenOrHasHiddenAncestor }.max { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) } }
+        // The chat's own scroll view: the tallest one that starts in the window's left half (the panel's file tree, on the
+        // right, can be taller now that a chat draws only its latest page).
+        func chat() -> NSScrollView? {
+            scrolls(host).filter { !$0.isHiddenOrHasHiddenAncestor && $0.convert($0.bounds, to: host).minX < host.bounds.width / 2 }
+                .max { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }
+        }
         var shot = 0
         /// Lit share of a rect of the window (host coordinates, top-left origin).
         func ink(_ r: CGRect, _ rep: NSBitmapImageRep) -> Double {
