@@ -155,8 +155,11 @@ struct SettingsMenu: View {
                 MenuRow(icon: "chart", title: "Usage", meta: "0 runs this week") { s.go(.usage) }
             }
             .onHover { if $0 { ThemePicker.shared.close() } }      // another row: the theme submenu folds away
-            Rectangle().fill(C.divider).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 4)
-            ThemeRows()
+            // MAVIS: no theme rows here (the theme lives in settings).
+            if !MV.on {
+                Rectangle().fill(C.divider).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 4)
+                ThemeRows()
+            }
         }
     }
 }

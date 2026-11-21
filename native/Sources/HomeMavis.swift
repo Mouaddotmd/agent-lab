@@ -191,33 +191,43 @@ struct MVProfileBar: View {
     /// Open, the bar ends where the list beside it ends: it keeps its 355 at the default list width and follows the
     /// list when you drag it, so it never slides under the surface.
     private var openWidth: CGFloat { MVListGap.width(panes) + MV.Size.profileBar.width - MV.Size.listWidth }
+    private var avatar: some View {
+        let open = s.view == .messages || s.openWorkspace != nil
+        return Circle().fill(MV.Tone.box2).frame(width: MV.Size.avatar, height: MV.Size.avatar)
+            .overlay(Icon("person", MV.Size.iconLarge - MV.Space.xs).foregroundStyle(MV.Ink.t2))
+            .overlay(alignment: .bottomTrailing) {
+                Circle().fill(MV.Accent.statusOn).frame(width: MV.Profile.dot, height: MV.Profile.dot)
+                    .background(Circle().fill(open ? MV.Tone.omni : MV.Tone.frame).padding(-MV.Stroke.dotRing))
+                    .offset(x: MV.Stroke.dotRing, y: MV.Stroke.dotRing)
+            }
+            .frame(width: MV.Size.avatarButton, height: MV.Size.avatarButton)
+    }
     var body: some View {
         let open = s.view == .messages || s.openWorkspace != nil
         let working = s.agents.filter { s.state(of: $0) == "working" }.count
         let shape = RoundedRectangle(cornerRadius: MV.Profile.radius, style: .continuous)
         HStack(spacing: MV.Space.gridGap) {
-            Button { s.go(.profile) } label: {
-                Circle().fill(MV.Tone.box2).frame(width: MV.Size.avatar, height: MV.Size.avatar)
-                    .overlay(Icon("person", MV.Size.iconLarge - MV.Space.xs).foregroundStyle(MV.Ink.t2))
-                    .overlay(alignment: .bottomTrailing) {
-                        Circle().fill(MV.Accent.statusOn).frame(width: MV.Profile.dot, height: MV.Profile.dot)
-                            .background(Circle().fill(open ? MV.Tone.omni : MV.Tone.frame).padding(-MV.Stroke.dotRing))
-                            .offset(x: MV.Stroke.dotRing, y: MV.Stroke.dotRing)
+            // Discord's: the whole profile (picture, name, status) is one button, lit as one; it opens the menu
+            // (Plugins, Profile, Usage). The gear goes straight to your settings.
+            Button { s.historyOpen = false; s.settingsOpen.toggle() } label: {
+                HStack(spacing: MV.Space.gridGap) {
+                    avatar
+                    if open {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(s.handle).font(F.font(MV.Text.title, .medium)).foregroundStyle(MV.Ink.t1).lineLimit(1)
+                            Text(working == 0 ? "No agents working" : "\(working) \(working == 1 ? "agent" : "agents") working")
+                                .font(F.font(MV.Text.meta, .regular)).foregroundStyle(MV.Ink.t3).lineLimit(1)
+                        }
+                        .padding(.trailing, MV.Space.inset)
                     }
-                    .frame(width: MV.Size.avatarButton, height: MV.Size.avatarButton)
-                    .contentShape(RoundedRectangle(cornerRadius: MV.Radius.rail, style: .continuous))
+                }
+                .frame(maxWidth: open ? .infinity : nil, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: MV.Radius.rail, style: .continuous))
             }
-            .buttonStyle(MVStates(shape: RoundedRectangle(cornerRadius: MV.Radius.rail, style: .continuous)))
+            .buttonStyle(MVStates(shape: RoundedRectangle(cornerRadius: MV.Radius.rail, style: .continuous), on: s.settingsOpen))
             .tip(s.handle, edge: .top).accessibilityLabel("Your profile")
             if open {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(s.handle).font(F.font(MV.Text.title, .medium)).foregroundStyle(MV.Ink.t1).lineLimit(1)
-                    Text(working == 0 ? "No agents working" : "\(working) \(working == 1 ? "agent" : "agents") working")
-                        .font(F.font(MV.Text.meta, .regular)).foregroundStyle(MV.Ink.t3).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                MVSquareButton(icon: "mvBell", label: "Today") { s.go(.agents) }
-                MVSquareButton(icon: "mvGear", label: "Plugins and settings") { s.historyOpen = false; s.settingsOpen.toggle() }
+                MVSquareButton(icon: "mvGear", label: "Settings") { s.closeMenus(); s.go(.profile) }
             }
         }
         .padding(.leading, MV.Space.xs).padding(.trailing, MV.Space.sm)
@@ -324,10 +334,12 @@ struct MVResizeGap: View {
 struct MVStates<S: Shape>: ButtonStyle {
     let shape: S
     var hoverable = true
+    /// Held lit (its menu is open).
+    var on = false
     @State private var hover = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .overlay(shape.fill(configuration.isPressed ? MV.Wash.stPress : hover && hoverable ? MV.Wash.stHover : .clear).allowsHitTesting(false))
+            .overlay(shape.fill(configuration.isPressed ? MV.Wash.stPress : (hover && hoverable) || on ? MV.Wash.stHover : .clear).allowsHitTesting(false))
             .onHover { hover = $0 }
     }
 }

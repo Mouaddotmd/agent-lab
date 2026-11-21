@@ -43,24 +43,24 @@ export default function calls({ store, engine, out }) {
     return store.agent(copy.id);
   }
 
-  async function sideAsk(agentId, sideId, text) {
+  async function sideAsk(agentId, sideId, text, images = []) {
     const agent = agentOf(agentId);
     const q = String(text || '').trim();
-    if (!q) throw new Error('Ask something first.');
+    if (!q && !images.length) throw new Error('Ask something first.');
     const list = store.sides(agentId);
     let side = sideId ? list.find((x) => x.id === sideId) : null;
     if (sideId && !side) throw new Error('That side chat was closed.');
     if (!side) side = { id: newId('s'), title: clip(q, 60), at: Date.now(), sessionId: null, operator: agent.operator, messages: [] };
     if (side.running) throw new Error('It’s still answering. Stop it first, or wait.');
     if (!side.messages.length) side.title = clip(q, 60);
-    side.messages.push({ id: newId('m'), role: 'user', text: q, at: Date.now() });
+    side.messages.push({ id: newId('m'), role: 'user', text: q, at: Date.now(), ...(images.length ? { images } : {}) });
     side.running = true;
     store.put(`sides_${agentId}`, side);
     emitSide(agentId, side);
     const reply = { id: newId('m'), role: 'assistant', text: '', at: Date.now(), steps: [] };
     const save = () => emitSide(agentId, { ...side, reply });
     let deltaAt = 0;
-    engine.side(agent, { key: `side:${side.id}`, sessionId: side.sessionId || agent.sessionId || null, fork: !side.sessionId, rewindAt: side.sessionId ? null : agent.rewindAt || null, prompt: q }, {
+    engine.side(agent, { key: `side:${side.id}`, sessionId: side.sessionId || agent.sessionId || null, fork: !side.sessionId, rewindAt: side.sessionId ? null : agent.rewindAt || null, prompt: q, images }, {
       // Words as they're written, at most 20 times a second.
       onDelta: (t) => { const now = Date.now(); if (now - deltaAt < 50) return; deltaAt = now; out({ event: { type: 'side-delta', agentId, sideId: side.id, text: `${reply.text ? `${reply.text}\n\n` : ''}${plain(t)}` } }); },
       onText: (t) => { const w = plain(t); if (!w) return; reply.text = reply.text ? `${reply.text}\n\n${w}` : w; save(); },
@@ -112,7 +112,7 @@ export default function calls({ store, engine, out }) {
       store.put(`sides_${agentId}`, side);
       return side;
     },
-    'convo:sideAsk': (agentId, sideId, text) => sideAsk(agentId, sideId || null, text),
+    'convo:sideAsk': (agentId, sideId, text, images) => sideAsk(agentId, sideId || null, text, Array.isArray(images) ? images : []),
     'convo:sideStop': (sideId) => engine.stopSide(`side:${sideId}`),
     'convo:sideRemove': (agentId, sideId) => { engine.stopSide(`side:${sideId}`); store.drop(`sides_${agentId}`, (s) => s.id !== sideId); return true; },
 

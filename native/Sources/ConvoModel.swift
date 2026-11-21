@@ -60,7 +60,7 @@ struct SideDoc: Codable, Equatable, Identifiable {
     var running: Bool?
     var count: Int?
     var messages: [Msg]?
-    struct Msg: Codable, Equatable, Identifiable { let id: String; var role: String; var text: String; var at: Double?; var steps: [SideStep]? }
+    struct Msg: Codable, Equatable, Identifiable { let id: String; var role: String; var text: String; var at: Double?; var steps: [SideStep]?; var images: [String]? = nil }
     struct SideStep: Codable, Equatable, Identifiable {
         let id: String; var verb: String; var line: String; var detail: String?; var output: String?; var done: Bool?; var failed: Bool?
         var step: Step { Step(id: id, verb: verb, line: line, round: 1, done: done ?? true, failed: failed ?? false, offset: 0, detail: detail, output: output) }
@@ -238,14 +238,14 @@ struct LiveContext: Codable, Equatable {
         doc = d; missing = false
         retitle(d.title)
     }
-    func ask(_ text: String) {
+    func ask(_ text: String, images: [String] = []) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty, !running else { return }
+        guard !t.isEmpty || !images.isEmpty, !running else { return }
         problem = nil
         // Shows at once; the engine's copy replaces it.
-        if var d = doc { d.messages = (d.messages ?? []) + [SideDoc.Msg(id: "p" + UUID().uuidString.prefix(6), role: "user", text: t, at: Date().timeIntervalSince1970 * 1000)]; d.running = true; doc = d }
+        if var d = doc { d.messages = (d.messages ?? []) + [SideDoc.Msg(id: "p" + UUID().uuidString.prefix(6), role: "user", text: t, at: Date().timeIntervalSince1970 * 1000, images: images.isEmpty ? nil : images)]; d.running = true; doc = d }
         Task {
-            do { _ = try await ConvoHub.shared.store?.engine.call("convo:sideAsk", [agentId, id, t]) }
+            do { _ = try await ConvoHub.shared.store?.engine.call("convo:sideAsk", [agentId, id, t, images]) }
             catch { problem = error.localizedDescription; if var d = doc { d.running = false; d.messages?.removeLast(); doc = d } }
         }
     }

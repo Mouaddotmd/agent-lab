@@ -147,7 +147,8 @@ extension PanelTab {
             case "side":
                 let tab = PanelTab(kind: .side(id: t.id, title: t.title ?? "Side chat"), slot: t.slot)
                 if let o = t.owner { owners[tab.id] = o }
-                tabs.append(tab)
+                // MAVIS: an old side-chat tab becomes the side chat beside the chat.
+                if MV.on { sideChat = t.id } else { tabs.append(tab) }
             case "terminal": tabs.append(PanelTab(kind: .terminal(t.id), slot: t.slot))
             case "report":
                 if let b = t.body { Reports.shared.body[t.id] = b }
@@ -176,6 +177,11 @@ extension PanelTab {
         panels[key] = p
         return p
     }
+    /// MAVIS: the side chat open beside the chat, on a surface of its own between the chat and this panel (never one of
+    /// the browser's tabs). Kept per chat across relaunches.
+    @Published var sideChat: String? {
+        didSet { if let v = sideChat { UserDefaults.standard.set(v, forKey: "sideChat." + agentId) } else { UserDefaults.standard.removeObject(forKey: "sideChat." + agentId) } }
+    }
     /// A side chat or helper in a channel's panel belongs to an agent (tab id → agent id); in an agent's own panel, to it.
     var owners: [String: String] = [:]
     func owner(_ tab: PanelTab) -> String { owners[tab.id] ?? agentId }
@@ -183,6 +189,7 @@ extension PanelTab {
         self.agentId = agentId; self.folder = folder
         files = FilesModel(folder: folder); quick = QuickOpenModel(folder: folder); changes = ChangesModel(agentId: changesFor ?? agentId)
         restoreBrowser()
+        if MV.on, sideChat == nil { sideChat = UserDefaults.standard.string(forKey: "sideChat." + agentId) }
         saving = $tabs.dropFirst().combineLatest($front.dropFirst()).sink { [weak self] _ in DispatchQueue.main.async { self?.saveBrowser() } }
         savingFront = $front.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.saveBrowser() } }
         // When the agent (or anything) may have changed files: git's marks, the tree, open files and Changes catch up.
@@ -303,6 +310,8 @@ extension PanelTab {
     }
     /// Puts `tab` where the tab `id` is (a new tab turning into the page or chat you picked), in front.
     func replace(_ id: String, with tab: PanelTab) {
+        // MAVIS: a question asked from a new tab opens beside the chat; the new tab it was asked in goes.
+        if MV.on, case .side(let sid, _) = tab.kind { forceClose(id); sideChat = sid; return }
         tabs.removeAll { $0.id == tab.id }
         var tab = tab
         if let i = tabs.firstIndex(where: { $0.id == id }) { tab.slot = tabs[i].key; tabs[i] = tab } else { tabs.append(tab) }
@@ -312,6 +321,7 @@ extension PanelTab {
 
     /// Brings a tab to the front of its pane, opening it (after the pane's others) and the pane if they aren't.
     func show(_ tab: PanelTab) {
+        if MV.on, case .side(let sid, _) = tab.kind { sideChat = sid; return }
         if !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
         if case .file(let path) = tab.kind { _ = doc(path) }
         front[tab.pane] = tab.id; selected = tab.id
@@ -396,6 +406,8 @@ struct ChatWithPanel<Chat: View>: View {
     /// MAVIS: your column width, nil = half. Read by the body so a drag redraws every frame (a static setting the view
     /// didn't watch left the column stuck while dragging); saved when the drag ends.
     @ObservedObject private var width2 = PanelWidth.shared
+    @ObservedObject private var sideWidth = SideWidth.shared
+    @State private var sideFrom: CGFloat?
     @State private var dragFrom: CGFloat?
     /// The panel is in the view (it stays while it slides off).
     @State private var present: Bool
@@ -419,12 +431,28 @@ struct ChatWithPanel<Chat: View>: View {
     /// shows and hides at once, as before.
     private var mavis: some View {
         GeometryReader { geo in
-            let room = max(MV.Resize.sideMin, geo.size.width - MV.Resize.chatMin)
+            // The side chat (when open) sits between the chat and the panel, its own surface and width.
+            let side = panel.sideChat
+            let sw0 = side == nil ? 0 : min(max(MV.Resize.sideMin, sideWidth.w ?? MV.Resize.sideMin), max(MV.Resize.sideMin, geo.size.width - MV.Resize.chatMin - MV.Space.gutter))
+            let rest = geo.size.width - (side == nil ? 0 : sw0 + MV.Space.gutter)
+            let room = max(MV.Resize.sideMin, rest - MV.Resize.chatMin)
             // Until you drag it, the column takes half (50/50 with the chat); your size is kept after that.
-            let half = (geo.size.width - MV.Space.gutter) / 2
+            let half = (rest - MV.Space.gutter) / 2
             let w = min(max(MV.Resize.sideMin, width2.w ?? half), room)
+            let sw = side == nil ? 0 : max(MV.Resize.sideMin, min(sw0, geo.size.width - MV.Resize.chatMin - MV.Space.gutter - (present ? w + MV.Space.gutter : 0)))
             HStack(spacing: 0) {
                 chat.frame(maxWidth: .infinity, maxHeight: .infinity).mvSurface()
+                if let side {
+                    MVResizeGap(axis: .horizontal) { dx in
+                        if sideFrom == nil { sideFrom = sw }
+                        sideWidth.w = max(MV.Resize.sideMin, (sideFrom ?? sw) - dx)
+                    } end: {
+                        sideFrom = nil; SideWidth.saved = sideWidth.w
+                    } reset: {
+                        sideWidth.w = nil; SideWidth.saved = nil
+                    }
+                    SideChatSurface(panel: panel, sideId: side).frame(width: sw).frame(maxHeight: .infinity).mvSurface()
+                }
                 if present {
                     // The gap is the handle (Chrome's side panel): drag to resize, double-click for the default.
                     MVResizeGap(axis: .horizontal) { dx in
@@ -1615,6 +1643,16 @@ struct TabIcon: View {
 
 
 /// The side column's width, one for every chat (each kept its own and jumped as you switched).
+/// The side chat's width (MAVIS), the same for every chat; nil = the narrowest.
+@MainActor final class SideWidth: ObservableObject {
+    static let shared = SideWidth()
+    @Published var w: CGFloat? = SideWidth.saved
+    static var saved: CGFloat? {
+        get { UserDefaults.standard.object(forKey: "sideChat.width") == nil ? nil : CGFloat(UserDefaults.standard.double(forKey: "sideChat.width")) }
+        set { if let v = newValue { UserDefaults.standard.set(Double(v), forKey: "sideChat.width") } else { UserDefaults.standard.removeObject(forKey: "sideChat.width") } }
+    }
+}
+
 @MainActor final class PanelWidth: ObservableObject {
     static let shared = PanelWidth()
     @Published var w: CGFloat? = SidePanel.mavisWidth

@@ -153,7 +153,7 @@ struct ChatPerf {
             f.sort(); print("window resize (\(page)) median \(ms(f[f.count / 2]))  p90 \(ms(f[f.count * 9 / 10]))  worst \(ms(f.last!))")
             // A change somewhere else in the app (a toast, another agent's run): what it costs this page.
             var pubs: [CFTimeInterval] = []
-            for i in 0..<20 { let t0 = CACurrentMediaTime(); store.toast = i % 2 == 0 ? "x" : nil; settle(); draw(shell); pubs.append(CACurrentMediaTime() - t0) }
+            for i in 0..<(ProcessInfo.processInfo.environment["PUBS"].flatMap { Int($0) } ?? 20) { let t0 = CACurrentMediaTime(); store.toast = i % 2 == 0 ? "x" : nil; settle(); draw(shell); pubs.append(CACurrentMediaTime() - t0) }
             pubs.sort(); print("   unrelated store change on (\(page)) median \(ms(pubs[pubs.count / 2]))")
         }
         exit(0)

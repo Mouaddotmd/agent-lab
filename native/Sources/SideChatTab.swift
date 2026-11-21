@@ -14,6 +14,41 @@ struct SideChatTab: View {
     }
 }
 
+/// MAVIS: the side chat on its own surface beside the chat (Claude's): a 44 header with what you asked, a new side
+/// chat and close, then the conversation and the chat's own box.
+struct SideChatSurface: View {
+    @EnvironmentObject var s: Store
+    @ObservedObject var panel: SidePanel
+    let sideId: String
+    var body: some View {
+        let owner = panel.owner(PanelTab(kind: .side(id: sideId, title: "")))
+        let model = ConvoHub.shared.side(owner, sideId)
+        VStack(spacing: 0) {
+            HStack(spacing: MV.Space.sm) {
+                SideTitle(model: model, agent: s.anyAgent(owner)?.name)
+                Spacer(minLength: 0)
+                MVIconButton(icon: "plus", label: "New side chat") {
+                    if let a = s.anyAgent(owner) { s.openSideChat(a, in: panel) }
+                }
+                MVIconButton(icon: "mvClose", label: "Close side chat") {
+                    var t = Transaction(); t.disablesAnimations = true
+                    withTransaction(t) { panel.sideChat = nil }
+                }
+            }
+            .padding(.horizontal, MV.Space.headerEdge)
+            .frame(height: MV.Size.header)
+            SideChatTab(panel: panel, sideId: sideId).id(sideId)
+        }
+    }
+}
+private struct SideTitle: View {
+    @ObservedObject var model: SideChatModel
+    let agent: String?
+    var body: some View {
+        MVPaneTitle(icon: "mvChat", title: model.doc?.title ?? "Side chat", meta: agent)
+    }
+}
+
 private struct SideChatView: View {
     @EnvironmentObject var s: Store
     @ObservedObject var model: SideChatModel
@@ -31,15 +66,19 @@ private struct SideChatView: View {
                         if msgs.isEmpty && !model.running { intro }
                         ForEach(msgs) { m in if MV.on { mavisRow(m) } else { row(m, agent) } }
                         if model.running, let agent { if MV.on { mavisLive() } else { live(agent) } }
+                        // Its asks, as in the chat: the side chat has the agent's own mode, so it can ask you.
+                        if MV.on { ForEach(Array(asks.enumerated()), id: \.1.id) { i, p in ApprovalCard(p: p, primary: i == 0).padding(.vertical, MV.Space.sm) } }
                     }
                     .padding(.horizontal, MV.on ? MV.Chat.sides : 16).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollIndicators(.never)
-                SideBox(model: model, agentName: agent?.name ?? "it")
+                if MV.on, let agent { SideComposer(model: model, agent: agent, panel: panel) }
+                else { SideBox(model: model, agentName: agent?.name ?? "it") }
             }
         }
+        .modifier(MVDropZone(key: "side:\(model.id)"))      // files dropped on the side chat land in its box
         .task { await loadEarlier() }
     }
 
@@ -62,9 +101,14 @@ private struct SideChatView: View {
     }
 
     /// MAVIS: drawn exactly as the chat is: your words in the blue bubble, the agent's as plain words under their work.
+    private var asks: [Approval] { s.approvals.filter { $0.conv == "side:\(model.id)" } }
     @ViewBuilder private func mavisRow(_ m: SideDoc.Msg) -> some View {
         if m.role == "user" {
-            MVBubble(text: m.text)
+            // As the chat: pictures and files above the bubble, the bubble only words.
+            let sent = SentFiles.cached(m.text)
+            let files = (m.images ?? []) + sent.files
+            if !files.isEmpty { MVSentImages(paths: files).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, MV.Space.sm) }
+            if !sent.words.isEmpty { MVBubble(text: sent.words) }
         } else {
             VStack(alignment: .leading, spacing: MV.Space.labelGap) {
                 if let steps = m.steps, !steps.isEmpty { FoldedWork(pieces: [.steps(id: m.id, steps: steps.map(\.step))]) }
@@ -139,6 +183,49 @@ private struct SideChatView: View {
     private func loadEarlier() async {
         let all = (try? await ConvoHub.shared.store?.engine.call("convo:sides", [model.agentId], as: [SideDoc].self)) ?? []
         earlier = Array(all.filter { $0.id != model.id && ($0.count ?? 0) > 0 }.prefix(6))
+    }
+}
+
+/// MAVIS: the side chat's box is the chat's own box (MVChatBox): attachments, commands and skills, @ files, the
+/// agent's Mode, talking, Stop. ↵ asks on the side.
+private struct SideComposer: View {
+    @EnvironmentObject var s: Store
+    @ObservedObject var model: SideChatModel
+    let agent: Agent
+    let panel: SidePanel
+    @StateObject private var box = ComposerModel()
+    @StateObject private var dictation = Dictation()
+    @State private var before = ""
+    var body: some View {
+        MVChatBox(model: box, dictation: dictation, placeholder: "Ask \(agent.name) on the side",
+                  busy: model.running, modeAgent: agent, stop: { model.stop() }, talk: { talk() },
+                  talkSend: { dictation.finish { heard in box.set(ChatComposer.join(before, heard), caretAtEnd: true); box.submit() } },
+                  dropKey: "side:\(model.id)")
+            .onChange(of: dictation.transcript) { _, heard in if dictation.active { box.set(ChatComposer.join(before, heard), caretAtEnd: true) } }
+            .onChange(of: dictation.failure) { _, f in if let f { s.toast = f } }
+            .overlay(alignment: .topLeading) {
+                if let p = model.problem {
+                    Text(p).font(F.font(MV.Text.meta, .regular)).foregroundStyle(MV.Accent.red).lineLimit(2)
+                        .padding(.leading, MV.Space.headerLead).offset(y: -MV.Space.section)
+                }
+            }
+            .onAppear { connect(); box.takeFocus() }
+            .onChange(of: model.id) { _, _ in connect() }
+            .onDisappear { box.save() }
+    }
+    func talk() {
+        if dictation.active { dictation.finish { heard in box.set(ChatComposer.join(before, heard), caretAtEnd: true) } }
+        else { before = box.text; dictation.start() }
+    }
+    func connect() {
+        box.attach(.side(agent: agent.id, id: model.id), store: s)
+        box.commandsFor = agent.id
+        s.loadCatalog(agent.id)
+        box.sidePanel = { [panel] in panel }
+        box.send = { [model] text, images, files in model.ask(Attachments.prompt(text, files: files), images: images) }
+        box.escape = { [model, dictation] in
+            if dictation.active { dictation.cancel() } else if model.running { model.stop() }
+        }
     }
 }
 

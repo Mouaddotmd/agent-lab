@@ -490,7 +490,7 @@ export class Engine {
     if (decision === 'note') {
       this.approvals.delete(id);
       a.resolve({ behavior: 'deny', message: `The user said: ${String(extra || '').trim()}` });
-      const r = this.runs.get(a.key); if (r) { r.activity = 'Working'; this.#emitRun(r); }
+      const r = this.runs.get(a.key) || this.sides?.get(a.key); if (r) { r.activity = 'Working'; this.#emitRun(r); }
       this.emit({ type: 'approvals' });
       return true;
     }
@@ -500,17 +500,17 @@ export class Engine {
       const answers = {};
       for (const q of a.input?.questions || []) { const v = extra?.[q.question]; if (v != null) answers[q.question] = Array.isArray(v) ? v.join(', ') : String(v); }
       a.resolve({ behavior: 'allow', updatedInput: { ...a.input, answers } });
-      const r = this.runs.get(a.key); if (r) { r.activity = 'Working'; this.#emitRun(r); }
+      const r = this.runs.get(a.key) || this.sides?.get(a.key); if (r) { r.activity = 'Working'; this.#emitRun(r); }
       this.emit({ type: 'approvals' });
       return true;
     }
     this.approvals.delete(id);
     // "Allow for the rest of this request": this run stops asking for this kind of step (file changes, commands).
-    if (decision === 'turn') { const r = this.runs.get(a.key); if (r && ['write', 'host', 'net'].includes(a.risk)) (r.allowed ||= new Set()).add(a.risk); }
+    if (decision === 'turn') { const r = this.runs.get(a.key) || this.sides?.get(a.key); if (r && ['write', 'host', 'net'].includes(a.risk)) (r.allowed ||= new Set()).add(a.risk); }
     // "Always allow file changes": this agent stops asking for them, whatever its mode, until you turn it off (the Mode
     // card shows it). Commands, deleting and sending keep following the mode.
     if (decision === 'always' && a.risk === 'write') {
-      const r = this.runs.get(a.key); if (r) (r.allowed ||= new Set()).add('write');
+      const r = this.runs.get(a.key) || this.sides?.get(a.key); if (r) (r.allowed ||= new Set()).add('write');
       if (a.agentId && this.store.state.agents?.some((x) => x.id === a.agentId)) { this.store.updateAgent(a.agentId, { alwaysEdits: true }); this.emit({ type: 'state' }); }
     }
     if (decision === 'deny') a.resolve({ behavior: 'deny', message: 'The user said no to this. Ask what they would like instead.' });
@@ -569,15 +569,17 @@ export class Engine {
   /// A side question about a DM, answered by the same agent from its own copy of the session (Claude forks it; Codex
   /// forks the thread), only looking: it never adds to the chat or asks you anything. Runs quietly (no run events);
   /// `cb` hears its words (onDelta, onText), its steps (onTool, onToolDone) and its end (onEnd(outcome, sessionId)).
-  side(agent, { key, sessionId, fork, rewindAt = null, prompt }, cb) {
+  side(agent, { key, sessionId, fork, rewindAt = null, prompt, images = [] }, cb) {
     const run = { key, quiet: true, startedAt: Date.now(), activity: '', preview: '', abort: null, stopped: false, agentId: agent.id, conv: key };
     run.onDelta = cb.onDelta; run.onText = (t) => cb.onText(t); run.onTool = cb.onTool; run.onToolDone = cb.onToolDone;
     run.onSession = (sid) => { if (sid) run.sessionId = sid; };
     (this.sides ||= new Map()).set(key, run);
-    const rule = "This is a side chat: the user is asking something about the conversation above without adding to it. Answer the question in your own voice, briefly. Don't carry on the main task and don't change anything; you can only look.";
+    // A side chat is the same agent with the same access (its mode, its tools, its asks): only the conversation is
+    // apart. It doesn't carry on the main task unless asked to.
+    const rule = "This is a side chat: the user is asking something on the side, without adding to the main conversation above. Answer in your own voice. Don't carry on the main task unless the user asks you to here.";
     const codex = agent.operator === 'codex';
-    const target = { cwd: agent.cwd || HOME, sessionId, fork: !!(sessionId && fork), rewindAt, model: agent.model, permission: 'read', side: true, work: true,
-      setup: !!agent.claudeSetup, images: [], append: codex ? '' : `${this.appendFor(agent)}\n\n${rule}` };
+    const target = { cwd: agent.cwd || HOME, sessionId, fork: !!(sessionId && fork), rewindAt, model: agent.model, permission: modeOf(agent.permission), alwaysEdits: !!agent.alwaysEdits, side: true, work: true,
+      setup: !!agent.claudeSetup, images, append: codex ? '' : `${this.appendFor(agent)}\n\n${rule}` };
     const go = codex ? this.#codex(run, target, `${rule}\n\n${prompt}`) : this.#claude(run, target, prompt);
     return go.then((o) => o || {}, (err) => ({ error: run.stopped ? 'Stopped.' : readable(err?.message || String(err)) })).then((o) => {
       this.sides.delete(key);
@@ -969,8 +971,6 @@ export class Engine {
       let rule = risk === 'question' ? 'ask' : MODES[target.permission || 'ask']?.[risk] || 'ask';
       if (rule === 'look') rule = toolName === 'Bash' && onlyLooks(input?.command) ? 'yes' : 'no';
       if (risk === 'write' && target.alwaysEdits) rule = 'yes';
-      // A side chat only looks: it never asks you anything (its question would land in the main chat's approvals).
-      if (target.side && rule === 'ask') return resolve({ behavior: 'deny', message: 'This is a side chat: you can look and answer, but not change anything or use the network. Answer from what you can read.' });
       if (rule === 'no') return resolve({ behavior: 'deny', message: 'This agent is in Read only mode: it can look and answer, but not change anything. Say what you found and what you would change.' });
       if (rule === 'yes' || run.allowed?.has(risk)) return resolve({ behavior: 'allow', updatedInput: input });
       const a = { id, key: run.key, agentId: run.agentId, conv: run.conv || null, chat: run.chat, tool: toolName, verb: d.verb, line: d.line, detail: d.detail || null, risk, input, suggestions, at: Date.now(), resolve };

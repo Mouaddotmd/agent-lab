@@ -42,7 +42,7 @@ import AppKit
         }
         // The buttons this look has (MAVIS has no top bar: back and forward live in the Go menu).
         let cases: [(String, TipEdge)] = MV.on
-            ? [("New agent (\u{2318}N)", .bottom), ("Today", .top), ("Add files, commands, plugins", .top), ("Talk", .top), ("Plugins and settings", .top)]
+            ? [("New agent (\u{2318}N)", .bottom), ("Settings", .top), ("Add files, commands, plugins", .top), ("Talk", .top)]
             : [("Collapse browser", .bottom), ("New agent", .bottom), ("Today", .bottom),
                ("Add files, commands, plugins", .top), ("New tab", .bottom), ("Back", .bottom), ("Plugins and settings", .top)]
         for (i, (title, edge)) in cases.enumerated() {
@@ -72,15 +72,15 @@ import AppKit
             check(Tips.shared.showing == nil, "\(title): leaving hides it")
         }
         // Warm: right after one goes, the next shows at once.
-        if let a = Tips.shared.owner(MV.on ? "New agent (\u{2318}N)" : "New agent"), let b = Tips.shared.owner("Today") {
+        if let a = Tips.shared.owner(MV.on ? "New agent (\u{2318}N)" : "New agent"), let b = Tips.shared.owner(MV.on ? "Settings" : "Today") {
             Tips.shared.enter(a, title: "New agent", detail: nil, edge: .bottom); spin(0.7)
-            Tips.shared.leave(a); Tips.shared.enter(b, title: "Today", detail: nil, edge: .bottom); spin(0.05)
-            check(Tips.shared.showing == "Today", "next button over: shows at once")
+            Tips.shared.leave(a); Tips.shared.enter(b, title: MV.on ? "Settings" : "Today", detail: nil, edge: .bottom); spin(0.05)
+            check(Tips.shared.showing == (MV.on ? "Settings" : "Today"), "next button over: shows at once")
             // A click puts it away and it doesn't come back while you stay.
             NSApp.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
             spin(0.1)
             check(Tips.shared.showing == nil, "a click hides it")
-            Tips.shared.enter(b, title: "Today", detail: nil, edge: .bottom); spin(0.6)
+            Tips.shared.enter(b, title: MV.on ? "Settings" : "Today", detail: nil, edge: .bottom); spin(0.6)
             check(Tips.shared.showing == nil, "and it stays hidden until you leave the button")
             Tips.shared.leave(b)
         }

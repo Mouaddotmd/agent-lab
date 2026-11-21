@@ -94,7 +94,11 @@ enum PlusItem: Int, CaseIterable {
     enum Target: Equatable {
         case agent(String)
         case channel(conv: String, members: [String], folder: String?)
-        var key: String { switch self { case .agent(let id): "dm:" + id; case .channel(let conv, _, _): "ch:" + conv } }
+        /// A side chat with `agent`: its own draft, the agent's commands, files and plugins.
+        case side(agent: String, id: String)
+        var key: String {
+            switch self { case .agent(let id): "dm:" + id; case .channel(let conv, _, _): "ch:" + conv; case .side(_, let id): "side:" + id }
+        }
     }
 
     @Published var text = ""
@@ -132,6 +136,8 @@ enum PlusItem: Int, CaseIterable {
     var agentID: String? { if case .agent(let id) = target { id } else { nil } }
     /// In a channel: the agent whose commands and skills "/" offers (the one that answers there, or the assistant).
     var commandsFor: String?
+    /// The agent whose commands, plugins and helpers this box offers (a chat's, a side chat's, a channel's answerer).
+    var who: String? { agentID ?? commandsFor }
     var agent: Agent? { agentID.flatMap { id in store?.agents.first { $0.id == id } } }
     /// Who /model, /btw and a side chat speak to: the chat's agent, or in a channel the one that answers there.
     var speaker: Agent? { agent ?? commandsFor.flatMap { id in store?.anyAgent(id) } }
@@ -324,11 +330,11 @@ enum PlusItem: Int, CaseIterable {
     func closeMenu() { menu = nil; submenu = nil }
 
     /// The rows the menu has here: a channel has no one agent's commands or plugins.
-    var menuItems: [PlusItem] { agentID == nil ? [.files, .folder] : PlusItem.allCases }
+    var menuItems: [PlusItem] { who == nil ? [.files, .folder] : PlusItem.allCases }
 
     private func moveMenu(_ delta: Int) {
         if let sub = submenu {
-            let count = store?.plugins[agentID ?? ""]?.count ?? 0
+            let count = store?.plugins[who ?? ""]?.count ?? 0
             let first = showsSetup ? -1 : 0
             var next = sub + delta
             if next < first { next = max(first, count - 1) } else if next >= count { next = first }
@@ -351,17 +357,17 @@ enum PlusItem: Int, CaseIterable {
     }
 
     /// Claude Code agents have the setup switch; Codex always runs with its own setup.
-    var showsSetup: Bool { agent?.operator != "codex" }
+    var showsSetup: Bool { speaker?.operator != "codex" }
 
     func openPlugins() {
         menu = PlusItem.plugins.rawValue
         submenu = showsSetup ? -1 : 0
-        if let id = agentID { store?.loadPlugins(id) }
+        if let id = who { store?.loadPlugins(id) }
     }
 
     func activateMenu() {
         if let sub = submenu {
-            guard let agent else { return }
+            guard let agent = speaker else { return }
             if sub == -1 { store?.setClaudeSetup(agent, on: agent.claudeSetup != true); return }
             guard let plugin = store?.plugins[agent.id]?[safe: sub] else { return }
             store?.setPlugin(agent.id, plugin, on: !plugin.enabled)
@@ -404,6 +410,7 @@ enum PlusItem: Int, CaseIterable {
         switch target {
         case .agent: agent?.cwd ?? store?.home ?? NSHomeDirectory()
         case .channel(_, _, let folder): folder ?? store?.home ?? NSHomeDirectory()
+        case .side: speaker?.cwd ?? store?.home ?? NSHomeDirectory()
         }
     }
 
@@ -468,7 +475,7 @@ enum PlusItem: Int, CaseIterable {
                     found.append(Suggestion(kind: .member, label: a.name, detail: a.job.map { Words.line($0, 60) } ?? "", insert: "@\(a.name) ", key: a.id))
                 }
             }
-            if let agentID, let helpers = store.catalogs[agentID]?.agents {
+            if let who, let helpers = store.catalogs[who]?.agents {
                 for h in helpers where Rank.score(q.replacingOccurrences(of: "agent-", with: ""), name: h.name, about: "") != nil {
                     found.append(Suggestion(kind: .helper, label: h.name, detail: Words.line(h.about, 80), insert: "@agent-\(h.name) "))
                 }
@@ -933,7 +940,7 @@ struct PlusMenu: View {
     }
 
     @ViewBuilder private var plugins: some View {
-        if let agent = model.agent {
+        if let agent = model.speaker {
             if model.showsSetup {
                 let on = agent.claudeSetup == true
                 toggleRow(title: "Use my Claude Code setup", detail: on ? "Your skills, plugins and CLAUDE.md · slower to start" : "Off: Agent Lab's rules only · fastest",
