@@ -1,5 +1,5 @@
 /* ================================================================
-   AGENT HUB SYSTEM. Every value on the page comes from a token below.
+   AGENT LAB SYSTEM. Every value on the page comes from a token below.
    1 Spacing scale   4px base: 4 8 12 16 24 32 48. Nothing in between.
    2 Proximity       inside a thing 4, between siblings 8, between groups 24, between sections 32.
    3 Nested radius   inner = outer - inset: sheet 16 > rows 8 (inset 8), card 16 > buttons 8 (inset 8),
@@ -67,7 +67,7 @@ input,select{font:inherit;color:inherit}
 .rail{display:flex;flex-direction:column;align-items:center;gap:var(--s2);padding:var(--s1) 0 var(--s1);min-height:0}
 .rbtn{position:relative;width:var(--tile);height:var(--tile);border-radius:var(--r4);display:grid;place-items:center;flex:none;color:var(--i10);background:var(--i2);transition:background .15s var(--ease),color .15s var(--ease),transform .15s var(--ease)}
 .rbtn:hover{background:var(--i3);color:var(--i12)}
-.rbtn:active{transform:scale(.95)}
+
 .rbtn.on{background:var(--i3);color:var(--i12);box-shadow:0 0 0 .5px var(--i6),var(--drop)}
 .rbtn.plain{background:none}
 .rbtn.plain:hover{background:var(--i2)}
@@ -153,12 +153,12 @@ input,select{font:inherit;color:inherit}
 .strip .end{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
 .icon-btn{width:var(--control);height:var(--control);display:grid;place-items:center;border-radius:var(--r2);color:var(--i10);flex:none;transition:background .15s var(--ease),transform .15s var(--ease)}
 .icon-btn:hover{background:var(--i3);color:var(--i12)}
-.icon-btn:active{transform:scale(.92)}
+
 .only-mobile,.only-narrow{display:none}
 
 /* 5 buttons: one primary per screen */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);height:var(--control);padding:0 var(--s3);border-radius:var(--r2);font-size:var(--t2);line-height:var(--lh2);white-space:nowrap;transition:background .15s var(--ease),transform .15s var(--ease)}
-.btn:active{transform:scale(.97)}
+
 .btn.primary{background:var(--i12);color:var(--i1);box-shadow:0 0 0 .5px var(--i12),var(--drop)}
 .btn.primary:hover{background:color-mix(in srgb,var(--i12) 93%,var(--i1))}
 .btn.second{background:var(--i3);color:var(--i12);box-shadow:0 0 0 .5px var(--i6),var(--drop)}
@@ -169,7 +169,7 @@ input,select{font:inherit;color:inherit}
 .raised .btn.danger{background:var(--i4);box-shadow:0 0 0 .5px var(--i7),var(--drop)}
 .round{width:var(--action);height:var(--action);border-radius:50%;display:grid;place-items:center;background:var(--i3);color:var(--i11);box-shadow:0 0 0 .5px var(--i6),var(--drop);flex:none;transition:background .15s var(--ease),transform .15s var(--ease)}
 .round:hover{background:var(--i4);color:var(--i12)}
-.round:active{transform:scale(.94)}
+
 .round .chat{transform:translateY(1px)}
 
 /* everyone: 32 gutter, sections 32 apart, rows 64 */
@@ -181,7 +181,7 @@ input,select{font:inherit;color:inherit}
 .crew{display:flex;gap:var(--s4);margin:var(--s6) calc(-1 * var(--s1)) 0;padding:var(--s1);overflow-x:auto;scrollbar-width:none}
 .crew::-webkit-scrollbar{display:none}
 .mate{display:flex;flex-direction:column;align-items:center;gap:var(--s2);width:80px;flex:none;text-align:center;transition:transform .15s var(--ease)}
-.mate:active{transform:scale(.97)}
+
 .halo{position:relative;width:72px;height:72px;border-radius:50%;display:grid;place-items:center}
 .halo::before{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--i5)}
 .halo.working::before{border-color:var(--i11) var(--i11) var(--i11) transparent;animation:spin 2.4s linear infinite}
@@ -267,7 +267,7 @@ input,select{font:inherit;color:inherit}
 /* right now: cards 12, screen inset 4 → 8 */
 .now-body{flex:1;padding:var(--s3);display:flex;flex-direction:column;gap:var(--s3)}
 .live{border-radius:var(--r3);background:var(--i2);border:.5px solid var(--i6);box-shadow:var(--lift);overflow:hidden;cursor:pointer;transition:transform .15s var(--ease)}
-.live:active{transform:scale(.99)}
+
 .live-top{display:flex;align-items:center;gap:var(--s3);padding:var(--s3)}
 .live-who{flex:1;min-width:0;display:flex;flex-direction:column}
 .live-doing{font-size:var(--t1);line-height:var(--lh1);color:var(--i10);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -308,7 +308,7 @@ input,select{font:inherit;color:inherit}
 .m-body{padding:0 var(--s6) var(--s4);display:flex;flex-direction:column;gap:var(--s3)}
 .choice{display:flex;align-items:center;gap:var(--s3);width:100%;min-height:var(--s12);padding:var(--s2) var(--s3);border-radius:var(--r3);text-align:left;background:var(--i3);box-shadow:0 0 0 .5px var(--i6),var(--drop);transition:background .15s var(--ease),transform .15s var(--ease)}
 .choice:hover{background:var(--i4)}
-.choice:active{transform:scale(.99)}
+
 .field{display:flex;flex-direction:column;gap:var(--s2)}
 .field label,.field .lbl{color:var(--i11)}
 .field input,.field select{height:40px;padding:0 var(--s3);border-radius:var(--r2);background:var(--i3);border:0;outline:none}

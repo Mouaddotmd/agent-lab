@@ -1,0 +1,5 @@
+/* In a browser there are no traffic lights to make room for: back to the artifact's frame. */
+.rail{padding-top:var(--s1);-webkit-app-region:no-drag}
+.win{padding:var(--s3) var(--s4) var(--s3) 0}
+.sheet{margin-top:0}
+.strip,.side-head{-webkit-app-region:no-drag}

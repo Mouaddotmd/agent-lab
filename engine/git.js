@@ -4,11 +4,12 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-function git(cwd, args, { allowFail = false } = {}) {
+// Runs git in `cwd`. Fails with git's last words unless `allowFail` (then `ok` says how it went).
+export function git(cwd, args, { allowFail = false, env = {} } = {}) {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }, (err, stdout, stderr) => {
+    execFile('git', args, { cwd, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', ...env } }, (err, stdout, stderr) => {
       if (err && !allowFail) return reject(new Error(String(stderr || err.message).trim().split('\n').slice(-3).join(' ')));
-      resolve({ ok: !err, out: String(stdout), err: String(stderr) });
+      resolve({ ok: !err, out: String(stdout), err: String(stderr), code: err ? err.code : 0 });
     });
   });
 }

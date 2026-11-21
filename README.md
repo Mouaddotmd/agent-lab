@@ -1,6 +1,6 @@
 # Agent Lab
 
-A home for your AI agents. An agent is Claude Code, Codex or Cursor with a name, a face, a folder and (optionally) a
+A home for your AI agents. An agent is Claude Code or Codex with a name, a face, a folder and (optionally) a
 job. It runs as that tool runs on its own, with your login and settings, and asks you before it changes anything.
 
 ## Run
@@ -10,18 +10,18 @@ npm install
 npm start
 ```
 
-Needs the tools you want to use, signed in as usual: `claude` (Claude Code), and optionally `codex` and `cursor-agent`.
+Needs the tools you want to use, signed in as usual: `claude` (Claude Code), and optionally `codex`.
 Agent Lab finds them in your `PATH`, `~/.local/bin`, `/usr/local/bin` and `/opt/homebrew/bin`.
 
 ## What it does
 
 - **Agents** run through the real tools: Claude Code through the Claude Agent SDK (your `claude` login), Codex through
-  `codex exec --json`, Cursor through `cursor-agent -p --output-format stream-json`. Replies stream in as they're written.
+  `codex exec --json`. Replies stream in as they're written.
 - **Nothing is added to how they behave.** Claude Code agents keep Claude Code's own system prompt and your own settings.
   The only extra text is a job you write yourself and the decisions you saved to Memory. Leave both empty and the agent
   answers exactly as the tool does.
 - **Approvals** pause the agent for real. With "Asks before changes", every edit or command shows a card (Allow, Always
-  allow, Don't allow) and the agent waits. Codex and Cursor can't pause, so they work inside their own sandboxes.
+  allow, Don't allow) and the agent waits. Codex can't pause, so it works inside its own sandbox.
 - **Stop** ends a run at any point.
 - **Own branch.** An agent can work on `agent/<name>` in its own folder (a git worktree). Review shows its changes
   against the branch it started from; Merge brings them in; Discard throws them away. If two agents change the same file,
@@ -43,7 +43,7 @@ worktrees). Chats are read where each tool keeps them; nothing is uploaded.
 | Path | What it is |
 | --- | --- |
 | `src/main/main.js` | Window, menu, and every call the interface can make |
-| `src/main/engine.js` | Runs agents (Claude Agent SDK, Codex, Cursor), streaming, approvals, stop |
+| `src/main/engine.js` | Runs agents (Claude Agent SDK, Codex), streaming, approvals, stop |
 | `src/main/history.js` | Reads Claude Code and Codex chats, and Mavis names and conversations |
 | `src/main/git.js` | Agent branches and folders, review, merge, discard, overlaps |
 | `src/main/store.js` | Saved state, written atomically |
