@@ -332,6 +332,34 @@ final class Store: ObservableObject {
         }
     }
 
+    /// Try again (the tools under an answer): back to just before your message, and the same words sent again.
+    func retry(_ agentId: String, _ messageId: String) {
+        let real = aliases.first(where: { $0.value == messageId })?.key ?? messageId
+        Task {
+            do {
+                struct Back: Decodable { let text: String; let images: [String]; let note: String? }
+                let back = try await engine.call("agent:rewind", [agentId, real], as: Back.self)
+                await loadMessages(agentId)
+                sendMessage(agentId, back.text, images: back.images)
+            } catch { toast = error.localizedDescription }
+        }
+    }
+    /// Branch from here (the tools under an answer): a new chat with this one up to the end of that answer, its box
+    /// empty; it opens.
+    func branch(_ agentId: String, _ messageId: String) {
+        let real = aliases.first(where: { $0.value == messageId })?.key ?? messageId
+        Task {
+            struct Forked: Decodable { let agent: Agent; let text: String; let images: [String] }
+            do {
+                let f = try await engine.call("convo:fork", [agentId, real, true], as: Forked.self)
+                if !agents.contains(where: { $0.id == f.agent.id }) { agents.append(f.agent) }
+                if let st = try? await engine.call("state", as: EngineState.self) { workspaces = st.workspaces }
+                openChat(f.agent.id)
+                toast = "Branched into \(f.agent.name)."
+            } catch { toast = error.localizedDescription }
+        }
+    }
+
     /// The row a message of a conversation shows in (yours, the turn it belongs to, or a note), for jumping to it.
     func rowId(forMessage id: String, in conv: String) -> String? {
         let list = messages[conv] ?? []

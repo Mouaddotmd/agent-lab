@@ -167,6 +167,8 @@ struct ChatTranscript: View, Equatable {
                             // thread while scrolling, 19 Nov trace).
                             // MAVIS has no row hover in the chat (prototype): only the classic look lights rows.
                             .background { if !MV.on { RowLightFill(lit: RowLights.shared.lit(row.id)).padding(.horizontal, -16) } }
+                            // MAVIS: the hovered row above the next, so its tools hang over it.
+                            .modifier(LitAbove(lit: RowLights.shared.lit(row.id)))
                             // The match in view while finding, and a jump's row lit for a moment.
                             .background {
                                 if flash == row.id || (!finding.isEmpty && match == row.id) {
@@ -369,7 +371,7 @@ final class Follower: ObservableObject {
             events = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown, .mouseMoved, .mouseExited]) { [weak self, weak view] e in
                 guard let self, let view, e.window === view.window, view.window != nil else { return e }
                 // A chat kept in the pool but not on screen hears nothing (each kept chat used to answer every event).
-                if MainActor.assumeIsolated({ view.isHiddenOrHasHiddenAncestor }) { return e }
+                if MainActor.assumeIsolated({ view.isHiddenOrHasHiddenAncestor || view.inAwayChat }) { return e }
                 if e.type == .mouseMoved || e.type == .mouseExited { MainActor.assumeIsolated { self.hover() }; return e }
                 let p = view.convert(e.locationInWindow, from: nil)
                 guard view.bounds.contains(p) else { return e }
@@ -438,12 +440,14 @@ final class Follower: ObservableObject {
     /// The chat's one hover tracker: the row under the pointer (by the rows' known places), lit; checked on every mouse
     /// move and every scroll (rows pass under a still pointer).
     @MainActor func hover() {
-        // MAVIS draws no row hover (prototype): nothing to find, on any mouse move or scroll frame.
-        if MV.on { return }
         guard let view = scrollView, let window = view.window, let doc = view.documentView else { RowLights.shared.light(nil); return }
         let p = window.mouseLocationOutsideOfEventStream
         guard view.bounds.contains(view.convert(p, from: nil)) else { RowLights.shared.light(nil); return }
         let y = doc.convert(p, from: nil).y
+        // MAVIS: the row keeps its tools while the pointer goes down into them (they hang under it).
+        if MV.on, let cur = RowLights.shared.current, let f = rowFrames[cur], f.minY <= y, y < f.maxY + MV.MessageTools.reach {
+            RowLights.shared.light(cur); return
+        }
         RowLights.shared.light(rowFrames.first { $0.value.minY <= y && y < $0.value.maxY }?.key)
     }
     private var inJumpWindow: Bool {
@@ -690,7 +694,13 @@ struct ChatRowView: View, Equatable {
                         } }
                         .padding(.horizontal, MV.Chat.bubbleX)
                         .padding(.top, MV.Chat.bubbleY - HugWidth.lift).padding(.bottom, MV.Chat.bubbleY + HugWidth.lift)
-                        .background(RoundedRectangle(cornerRadius: MV.Chat.bubbleRadius, style: .continuous).fill(MV.Accent.bubble))
+                        .background(MVBubbleFill(lit: RowLights.shared.lit(row.id)))
+                        // The tools when you hover it (MessageTools.swift): over the bubble's foot, at its right.
+                        .overlay(alignment: .bottomTrailing) {
+                            if !pending, !queued, !steered {
+                                MVToolsSlot(rowId: row.id, mine: true, time: at, agentId: agent?.id ?? "", messageId: id, words: words)
+                            }
+                        }
                         .opacity(queued ? 0.6 : 1)
                     }
                     // MAVIS: no Fork / Go back buttons popping over your messages (the prototype has none).
@@ -716,6 +726,13 @@ struct ChatRowView: View, Equatable {
                     // MAVIS: the agent's words as plain text, no face or name, in a reading width.
                     TurnSlot(agentId: agent?.id ?? turn.by ?? "", turn: turn)
                         .frame(maxWidth: MV.Chat.readWidth, alignment: .leading)
+                        // Hovered: the row lights barely and its tools hang under the words, at the left.
+                        .background(MVRowLight(lit: RowLights.shared.lit(row.id)))
+                        .overlay(alignment: .bottomLeading) {
+                            if !turn.running, !turn.isEmpty {
+                                MVToolsSlot(rowId: row.id, mine: false, time: turn.at, agentId: agent?.id ?? turn.by ?? "", messageId: turn.id, words: turn.text)
+                            }
+                        }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, MV.Space.sm).padding(.bottom, MV.Space.inset)
                 } else {
@@ -803,7 +820,7 @@ final class Lit: ObservableObject { @Published var on = false }
 @MainActor final class RowLights {
     static let shared = RowLights()
     private var lits: [String: Lit] = [:]
-    private var current: String?
+    private(set) var current: String?
     func lit(_ id: String) -> Lit { if let l = lits[id] { return l }; let l = Lit(); lits[id] = l; return l }
     func light(_ id: String?) {
         guard id != current else { return }

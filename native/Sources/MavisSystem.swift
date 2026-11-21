@@ -66,6 +66,30 @@ enum MV {
     }
 
     // MARK: Strokes (spec 1, 7)
+    /// The tools under a message you hover (prototype .mt): a 28 pill on the toolbar tone with the 8% ring, when it
+    /// was sent (11, t3), then 24 round buttons with 14 icons. Yours hang over your bubble's foot (10 up into it);
+    /// the agent's sit 4 under its words, 4 out to the left.
+    enum MessageTools {
+        static let height: CGFloat = 28, radius: CGFloat = 14, pad: CGFloat = 2
+        static let button: CGFloat = 24, icon: CGFloat = 14
+        static let time: CGFloat = 11, timeLead: CGFloat = 8, timeTrail: CGFloat = 4
+        static let fill = Color(0x2b2b2b), ring = Color(0xffffff, 0.08)
+        static let overlap: CGFloat = 10, below: CGFloat = 4, out: CGFloat = 4
+        /// The agent's row lights barely (2.5% white, 8 past its words, radius 12), so cards in it still read.
+        static let rowLight = Color(0xffffff, 0.025), rowSpread: CGFloat = 8, rowRadius: CGFloat = 12
+        /// Your bubble a touch brighter while hovered (22% → 25% of the blue).
+        static let bubbleLit = Color(0x789aff, 0.25)
+        /// Motion (prototype mtGrow / mtItem): a 28 dot at its corner stretches into the pill on Atoll's open spring
+        /// at twice the speed; the contents fade in 6 pt from the corner, 35 ms in, 15 ms apart; it leaves faster, no bounce.
+        static let dot: CGFloat = 28, startScale: CGFloat = 0.92, startOpacity: Double = 0.6
+        static let response: Double = 0.21, damping: Double = 0.8
+        static let itemShift: CGFloat = 6, itemDelay: Double = 0.035, itemStep: Double = 0.015, itemTime: Double = 0.13
+        static let exitTime: Double = 0.12, exitScale: CGFloat = 0.96
+        static let press: CGFloat = 0.86, pressBack: Double = 0.26, copied: Double = 1.2
+        /// How far under a hovered message the pointer can go and keep it (to reach the pill).
+        static let reach: CGFloat = 26
+    }
+
     enum Stroke {
         static let surface: CGFloat = 0.5                       // hairline in Tone.hairline
         static let list: CGFloat = 1                            // the list column's outline in Tone.listEdge

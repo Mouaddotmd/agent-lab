@@ -119,12 +119,16 @@ export default function calls({ store, engine, out }) {
     // ---- fork and hand off ----
     /// A new agent like this one whose chat is everything before one of your messages; that message comes back to
     /// put in its box. Claude: its session forked at that point; Codex: its thread forked and rolled back.
-    async 'convo:fork'(agentId, messageId) {
+    /// `through`: branch from an answer instead: the new chat keeps that message's whole turn (up to your next
+    /// message, or the end), and its box starts empty.
+    async 'convo:fork'(agentId, messageId, through = false) {
       const a = agentOf(agentId);
-      if (engine.runs.has(`agent:${agentId}`)) throw new Error(`${a.name} is still working. Fork when it's done.`);
+      if (engine.runs.has(`agent:${agentId}`)) throw new Error(`${a.name} is still working. Branch when it's done.`);
       const all = store.messages(agentId);
-      const at = all.findIndex((m) => m.id === messageId);
-      if (at < 0 || all[at].role !== 'user') throw new Error('That message is no longer in this chat.');
+      const found = all.findIndex((m) => m.id === messageId);
+      if (found < 0 || all[found].role !== 'user') throw new Error('That message is no longer in this chat.');
+      const next = through ? all.findIndex((m, i) => i > found && m.role === 'user') : found;
+      const at = through ? (next < 0 ? all.length : next) : found;
       const before = all.slice(0, at);
       let sessionId = null;
       if (a.sessionId && before.some((m) => m.role !== 'user')) {
@@ -143,14 +147,14 @@ export default function calls({ store, engine, out }) {
           if (keep) sessionId = (await forkSession(a.sessionId, { upToMessageId: keep, title: `${a.name} (fork)` })).sessionId;
         }
       }
-      const copy = copyAgent(a, `${a.name} (fork)`, sessionId);
+      const copy = copyAgent(a, `${a.name} (branch)`, sessionId);
       const list = store.messages(copy.id);
       list.push(...before.map((m) => structuredClone(m)));
       list.dirty = true;
       const tools = new Set(before.map((m) => m.toolId).filter(Boolean));
       for (const h of store.helpers(agentId)) if (tools.has(h.id)) store.putHelper(copy.id, structuredClone(h));
       store.save();
-      return { agent: store.agent(copy.id), text: all[at].text, images: all[at].images || [] };
+      return { agent: store.agent(copy.id), text: through ? '' : all[at].text, images: through ? [] : all[at].images || [] };
     },
 
     /// Passes a DM to another agent: it gets a note on the goal, what was done and what's left as your first message
