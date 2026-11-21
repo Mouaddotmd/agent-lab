@@ -8,8 +8,9 @@ struct HelperTab: View {
     @ObservedObject var panel: SidePanel
     let helperId: String
     var body: some View {
-        HelperView(model: ConvoHub.shared.helper(panel.agentId, helperId))
-            .environment(\.chatAgentId, panel.agentId)
+        let owner = panel.owner(PanelTab(kind: .helper(id: helperId, title: "")))
+        HelperView(model: ConvoHub.shared.helper(owner, helperId))
+            .environment(\.chatAgentId, owner)
     }
 }
 

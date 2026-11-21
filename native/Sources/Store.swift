@@ -298,6 +298,12 @@ final class Store: ObservableObject {
     /// An agent's asks in its own chat (a channel's asks stay in the channel).
     func approvalsFor(_ id: String) -> [Approval] { approvals.filter { $0.agentId == id && ($0.conv == nil || $0.conv == id) } }
     /// web: stateOf
+    /// A channel's state, as a chat's (state(of:)): waiting on you, working, or free. Only its own runs and asks.
+    func channelState(_ conv: String) -> String {
+        if approvals.contains(where: { $0.conv == conv }) { return "needs" }
+        if runs.keys.contains(where: { $0.hasPrefix("ch:\(conv):") }) { return "working" }
+        return "idle"
+    }
     func state(of a: Agent) -> String {
         if !approvalsFor(a.id).isEmpty { return "needs" }
         if runs["agent:\(a.id)"] != nil { return "working" }
@@ -380,8 +386,44 @@ final class Store: ObservableObject {
 
     /// A side chat with an agent in its panel: asked at once when there's a question (/btw), else empty to ask in.
     /// `replacing`: a new tab that becomes this chat (it stays there, in place, as the chat starts).
-    func openSideChat(_ agent: Agent, question: String? = nil, replacing: String? = nil) {
-        let panel = SidePanel.of(agent, home: home)
+    /// Any agent by id, the hidden assistant included.
+    func anyAgent(_ id: String) -> Agent? { agents.first { $0.id == id } ?? assistants.first { $0.id == id } }
+    /// A channel's own panel (browser, terminal, files, Changes): the one place it is made, so every way in finds it.
+    func channelPanel(_ w: Workspace, _ channel: String) -> SidePanel {
+        let ch = w.categories?.flatMap(\.channels).first { $0.id == channel }
+        let first = ch.flatMap { w.answerer($0, among: agents) }?.id ?? w.members?.first
+        return SidePanel.of(key: "ch:\(w.conv(channel))", folder: w.path ?? home, changesFor: first)
+    }
+    /// The workspace and channel a conversation id (c_<ws>_<channel>) belongs to.
+    func channelOf(conv: String) -> (Workspace, Workspace.Channel)? {
+        for w in workspaces where conv.hasPrefix("c_\(w.id)_") {
+            if let ch = w.categories?.flatMap(\.channels).first(where: { w.conv($0.id) == conv }) { return (w, ch) }
+        }
+        return nil
+    }
+    /// Who a panel's browser speaks for: the agent whose panel it is, or in a channel's panel the one that answers there
+    /// (or the assistant).
+    func panelAgent(_ panel: SidePanel) -> Agent? {
+        if panel.agentId.hasPrefix("ch:") {
+            guard let (w, ch) = channelOf(conv: String(panel.agentId.dropFirst(3))) else { return assistants.first }
+            return w.answerer(ch, among: agents) ?? assistants.first
+        }
+        return anyAgent(panel.agentId)
+    }
+    /// The panel beside what's on screen: the open chat's, or the open channel's.
+    var currentPanel: SidePanel? {
+        if let id = openAgent, let a = anyAgent(id) { return SidePanel.of(a, home: home) }
+        if let w = currentWorkspace { return channelPanel(w, openChannel) }
+        return nil
+    }
+    /// The panel for a chat by its conversation (a channel's) or agent.
+    func panel(conv: String?, agentId: String?) -> SidePanel? {
+        if let conv, let (w, ch) = channelOf(conv: conv) { return channelPanel(w, ch.id) }
+        return agentId.flatMap { anyAgent($0) }.map { SidePanel.of($0, home: home) }
+    }
+
+    func openSideChat(_ agent: Agent, question: String? = nil, replacing: String? = nil, in given: SidePanel? = nil) {
+        let panel = given ?? SidePanel.of(agent, home: home)
         let q = (question ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             do {
@@ -390,6 +432,7 @@ final class Store: ObservableObject {
                                      : try await engine.call("convo:sideAsk", [agent.id, NSNull(), q], as: Made.self)
                 _ = ConvoHub.shared.side(agent.id, made.id)
                 let tab = PanelTab(kind: .side(id: made.id, title: made.title))
+                if panel.agentId != agent.id { panel.owners[tab.id] = agent.id }
                 if let replacing { panel.replace(replacing, with: tab) } else { panel.show(tab) }
             } catch { toast = error.localizedDescription }
         }

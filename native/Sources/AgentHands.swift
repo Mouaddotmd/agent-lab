@@ -33,10 +33,11 @@ import WebKit
     static func perform(_ store: Store, _ agentId: String, _ action: String, _ a: [String: Any]) async throws -> Any {
         // "a1@c_<ws>_<channel>": the agent answering in a channel works on that channel's panes, not its DM's.
         let parts = agentId.split(separator: "@", maxSplits: 1).map(String.init)
-        guard let agent = store.agents.first(where: { $0.id == parts[0] }) else { throw Problem("This chat has no side panes.") }
+        // The channel's assistant is an agent too (store.assistants): its browser is the channel's, like anyone's.
+        guard let agent = store.anyAgent(parts[0]) else { throw Problem("This chat has no side panes.") }
         let panel: SidePanel
-        if parts.count == 2, let w = store.workspaces.first(where: { w in w.channels.contains { w.conv($0.id) == parts[1] } }) {
-            panel = SidePanel.of(key: "ch:\(parts[1])", folder: w.path ?? store.home, changesFor: agent.id)
+        if parts.count == 2, let (w, ch) = store.channelOf(conv: parts[1]) {
+            panel = store.channelPanel(w, ch.id)
         } else {
             panel = SidePanel.of(agent, home: store.home)
         }

@@ -13,6 +13,29 @@ Still open:
 - 39: switching theme takes ~40 ms (one hitch, once).
 - T5: no tests yet for channels, chips, attachments, the omnibox or the tab strip.
 
+## Messages vs workspace parity (same day)
+
+Everything a chat with an agent does, a channel now does the same way:
+
+| # | Was broken in channels | Now |
+|---|---|---|
+| 47 | /btw did nothing (it needed a DM agent) | Opens a side chat with the channel's agent (or the assistant), in the channel's own panel |
+| 48 | Side chat from the + menu did nothing | Same as /btw |
+| 49 | /model did nothing | Changes the answering agent's model |
+| 50 | Slash commands and skills (/compact, /review, $skill) were wrapped in the channel's words, so they never ran | Sent as typed, as in a chat |
+| 51 | "/" listed only the built-ins until you'd opened that agent's DM (its commands were never loaded) | Loaded when the channel opens |
+| 52 | /handoff was offered but meaningless | Offered only in a chat |
+| 53 | A message sent while the agent answered was refused ("still answering here") | Goes into its turn, as in a chat |
+| 54 | Esc didn't stop the reply | Stops it (after closing dictation), as in a chat |
+| 55 | Asking from the channel browser's omnibox, new tab or page did nothing; the new tab said "the agent" | Asks the channel's agent, in a side chat in that panel |
+| 56 | "Add to chat" from the channel's browser, files or diff did nothing | Lands in the channel's box |
+| 57 | A side chat or helper in a channel's panel looked for an agent called "ch:…" (blank) | Each tab remembers its agent, across relaunches |
+| 58 | Links in channel messages opened in your default browser, files in Finder | Open in the channel's panel, as in a chat |
+| 59 | A report in a channel opened as a sheet; a helper opened in the agent's DM panel (not on screen) | Both open in the channel's panel |
+| 60 | The channel's assistant couldn't use the browser or terminal ("This chat has no side panes") | It can, in the channel's panel |
+| 61 | The channel's panel could be made with a different Changes agent depending on who opened it first | Made in one place |
+| 62 | The channel header had no state | Shows Working / Waiting / Free, like a chat's |
+
 Fix notes: a paging regression found by paneltest in this pass (older messages loading during a rewrap) was fixed by
 loading only on your own scroll; paneltest now finds the chat by position (the file tree could be taller).
 

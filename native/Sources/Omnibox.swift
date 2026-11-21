@@ -274,7 +274,7 @@ struct StartTab: View {
     @State private var boxHover = false
     init(panel: SidePanel, tabId: String) {
         self.panel = panel; self.tabId = tabId
-        let name = ConvoHub.shared.store?.agents.first { $0.id == panel.agentId }?.name ?? "the agent"
+        let name = ConvoHub.shared.store.flatMap { $0.panelAgent(panel) }?.name ?? "the agent"
         _model = StateObject(wrappedValue: OmniModel(agentName: name, start: ""))
     }
     var body: some View {
@@ -359,9 +359,9 @@ struct StartTab: View {
         switch p {
         case .open(let u): panel.openWeb(u, replacing: tabId)
         case .ask(let q):
-            guard let a = s.agents.first(where: { $0.id == panel.agentId }) else { return }
+            guard let a = s.panelAgent(panel) else { return }
             starting = true
-            s.openSideChat(a, question: q, replacing: tabId)
+            s.openSideChat(a, question: q, replacing: tabId, in: panel)
         }
     }
 }
@@ -375,7 +375,7 @@ struct MVLauncher: View {
     @StateObject private var model: OmniModel
     init(panel: SidePanel) {
         self.panel = panel
-        let name = ConvoHub.shared.store?.agents.first { $0.id == panel.agentId }?.name ?? "the agent"
+        let name = ConvoHub.shared.store.flatMap { $0.panelAgent(panel) }?.name ?? "the agent"
         _model = StateObject(wrappedValue: OmniModel(agentName: name, start: ""))
     }
     var body: some View {
@@ -401,8 +401,8 @@ struct MVLauncher: View {
         switch p {
         case .open(let u): panel.openWeb(u)
         case .ask(let q):
-            guard let a = s.agents.first(where: { $0.id == panel.agentId }) else { return }
-            s.openSideChat(a, question: q)
+            guard let a = s.panelAgent(panel) else { return }
+            s.openSideChat(a, question: q, in: panel)
         }
     }
 }

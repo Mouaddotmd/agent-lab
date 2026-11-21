@@ -259,7 +259,7 @@ struct ProseView: NSViewRepresentable {
     }
     @MainActor static func open(_ url: URL) {
         let s = ConvoHub.shared.store
-        let panel = s.flatMap { s in s.openAgent.flatMap { id in s.agents.first { $0.id == id } }.map { SidePanel.of($0, home: s.home) } }
+        let panel = s?.currentPanel
         if url.isFileURL {
             var dir: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &dir)

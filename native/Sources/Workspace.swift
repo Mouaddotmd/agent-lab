@@ -481,7 +481,7 @@ struct ChannelPane: View {
         let cast = Dictionary(s.agents.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let idx = (w.categories ?? []).firstIndex { $0.channels.contains { $0.id == channel.id } } ?? 0
         let cat = (w.categories ?? []).indices.contains(idx) ? w.categories![idx].name : w.name
-        let panel = SidePanel.of(key: "ch:\(conv)", folder: w.path ?? s.home, changesFor: members.first?.id)
+        let panel = s.channelPanel(w, channel.id)
         if MV.on {
             // A channel has the same tools as a chat with an agent (browser, terminal, files) plus Changes, which only
             // a workspace has.
@@ -497,6 +497,7 @@ struct ChannelPane: View {
                 MavisChannelHead(category: cat, color: MV.Workspace.color((w.categories ?? []).indices.contains(idx) ? w.categories![idx] : nil, at: idx),
                                  name: channel.name, members: members, panel: panel,
                                  given: w.granted(channel, among: s.agents),
+                                 state: s.channelState(conv),
                                  set: { ids in
                                      // Given a channel: a member of its workspace too.
                                      for id in ids where !(w.members ?? []).contains(id) { Task { await s.setMember(id, w.id, true) } }
@@ -619,8 +620,14 @@ struct ChannelComposer: View {
     func connect() {
         model.attach(.channel(conv: w.conv(channel.id), members: members.map(\.id), folder: w.path), store: s)
         model.commandsFor = (w.answerer(channel, among: s.agents) ?? s.assistants.first)?.id
+        if let id = model.commandsFor { s.loadCatalog(id) }
+        model.sidePanel = { [s, w, channel] in s.channelPanel(w, channel.id) }
         model.send = { [s, w, channel] text, images, files in s.sendToChannel(w, channel.id, text, images: images, files: files) }
-        model.escape = { [dictation] in if dictation.active { dictation.cancel() } }
+        // Esc as in a chat: stop listening, else stop this channel's reply.
+        model.escape = { [s, w, channel, dictation] in
+            if dictation.active { dictation.cancel(); return }
+            for k in s.runs.keys where k.hasPrefix("ch:\(w.conv(channel.id)):") { s.stop(k) }
+        }
     }
 }
 

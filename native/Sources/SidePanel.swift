@@ -114,7 +114,7 @@ extension PanelTab {
     // MARK: The agent's browser, kept
 
     /// A Browser tab as it's kept on disk.
-    private struct SavedTab: Codable { var kind: String; var id: String; var title: String?; var url: String?; var slot: String?; var body: String? = nil }
+    private struct SavedTab: Codable { var kind: String; var id: String; var title: String?; var url: String?; var slot: String?; var body: String? = nil; var owner: String? = nil }
     private struct SavedBrowser: Codable { var tabs: [SavedTab]; var front: String?; var frontTerminal: String? = nil }
     private var browserKey: String { "browser.tabs." + agentId }
     /// Every Browser tab (pages, new tabs, side chats) with its address and title, and the one in front: written as they
@@ -126,7 +126,7 @@ extension PanelTab {
                 let url = BrowserPage.existing(id)?.url ?? restored[id]
                 return SavedTab(kind: "web", id: id, title: BrowserPage.existing(id)?.title ?? restoredTitles[id], url: url?.absoluteString, slot: t.slot)
             case .start(let id): return SavedTab(kind: "start", id: id, slot: t.slot)
-            case .side(let id, let title): return SavedTab(kind: "side", id: id, title: title, slot: t.slot)
+            case .side(let id, let title): return SavedTab(kind: "side", id: id, title: title, slot: t.slot, owner: owners[t.id])
             case .report(let id, let title): return SavedTab(kind: "report", id: id, title: title, slot: t.slot, body: Reports.shared.body[id])
             case .terminal(let key): return SavedTab(kind: "terminal", id: key, slot: t.slot)
             default: return nil
@@ -144,7 +144,10 @@ extension PanelTab {
                 if let u = t.url.flatMap(URL.init(string:)) { restored[t.id] = u }
                 if let title = t.title, !title.isEmpty { restoredTitles[t.id] = title }
             case "start": tabs.append(PanelTab(kind: .start(t.id), slot: t.slot))
-            case "side": tabs.append(PanelTab(kind: .side(id: t.id, title: t.title ?? "Side chat"), slot: t.slot))
+            case "side":
+                let tab = PanelTab(kind: .side(id: t.id, title: t.title ?? "Side chat"), slot: t.slot)
+                if let o = t.owner { owners[tab.id] = o }
+                tabs.append(tab)
             case "terminal": tabs.append(PanelTab(kind: .terminal(t.id), slot: t.slot))
             case "report":
                 if let b = t.body { Reports.shared.body[t.id] = b }
@@ -173,6 +176,9 @@ extension PanelTab {
         panels[key] = p
         return p
     }
+    /// A side chat or helper in a channel's panel belongs to an agent (tab id → agent id); in an agent's own panel, to it.
+    var owners: [String: String] = [:]
+    func owner(_ tab: PanelTab) -> String { owners[tab.id] ?? agentId }
     init(agentId: String, folder: String, changesFor: String? = nil) {
         self.agentId = agentId; self.folder = folder
         files = FilesModel(folder: folder); quick = QuickOpenModel(folder: folder); changes = ChangesModel(agentId: changesFor ?? agentId)

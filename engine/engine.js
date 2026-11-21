@@ -323,13 +323,22 @@ export class Engine {
     if (!ch) throw new Error('That channel was removed.');
     const conv = channelConv(ws.id, ch.id);
     const before = this.store.messages(conv).slice();
-    const sent = this.store.addMessage(conv, { role: 'user', text, ...(images.length ? { images } : {}) });
-    this.emit({ type: 'messages', agentId: conv });
     const granted = (Array.isArray(ch.agents) ? ch.agents : ch.agent ? [ch.agent] : []).map((id) => this.store.agent(id)).filter((a) => a && !a.hidden);
     // @ reaches any member (a tag brings them in); untagged, the channel's own agents answer.
     const members = (ws.members || []).map((id) => this.store.agent(id)).filter((a) => a && !a.hidden);
     const tags = tagged(text, [...new Map([...granted, ...members].map((a) => [a.id, a])).values()]);
     const answering = tags.length ? tags : granted.length ? [granted[0]] : [this.store.assistant()];
+    // As in a chat: a message sent while the one answering works goes into its turn (it reads it at its next step).
+    if (answering.length === 1) {
+      const run = this.runs.get(channelRunKey(conv, answering[0].id));
+      if (run && !run.ended && run.push) {
+        const m = run.onSteer?.(String(text), images);
+        if (run.push(String(text), images)) return conv;
+        if (m) { this.store.removeMessage(conv, m.id); this.emit({ type: 'messages', agentId: conv }); }
+      }
+    }
+    const sent = this.store.addMessage(conv, { role: 'user', text, ...(images.length ? { images } : {}) });
+    this.emit({ type: 'messages', agentId: conv });
     for (const agent of answering) {
       const key = channelRunKey(conv, agent.id);
       if (this.runs.has(key)) {
@@ -337,7 +346,10 @@ export class Engine {
         this.emit({ type: 'messages', agentId: conv });
         continue;
       }
-      const prompt = channelPrompt({ ws, ch, members: granted, agent, before, text, own: !tags.length });
+      // A command or skill (/compact, /review, $skill) goes to the agent as typed, as in a chat: wrapped in the
+      // channel's words it would only be read as text.
+      const command = !tags.length && /^[\/$][\w:-]/.test(text.trim());
+      const prompt = command ? text.trim() : channelPrompt({ ws, ch, members: granted, agent, before, text, own: !tags.length });
       this.#converse(agent, { conv, sent, prompt, images, by: agent.id, cwd: ws.path || agent.cwd || HOME, ws, key });
     }
     return conv;

@@ -1087,6 +1087,7 @@ struct ReportCard: View {
     let report: ReportTag.Report
     var id: String = ""
     @Environment(\.chatAgentId) private var agentId
+    @Environment(\.chatConv) private var conv
     var body: some View {
         Hover { h in
             Button { open() } label: {
@@ -1111,9 +1112,9 @@ struct ReportCard: View {
     /// Opens in its tab beside the chat (a thread you can close and come back to); with no side panel (a channel), as
     /// a sheet over the window.
     private func open() {
-        if let agentId, !id.isEmpty, let agent = s.agents.first(where: { $0.id == agentId }) {
+        if !id.isEmpty, let panel = s.panel(conv: conv, agentId: agentId) {
             Reports.shared.opened.insert(id)
-            SidePanel.of(agent, home: s.home).showReport(id: id, report)
+            panel.showReport(id: id, report)
         } else { s.openReport = report }
     }
 }

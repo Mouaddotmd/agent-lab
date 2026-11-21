@@ -8,8 +8,9 @@ struct SideChatTab: View {
     @ObservedObject var panel: SidePanel
     let sideId: String
     var body: some View {
-        SideChatView(model: ConvoHub.shared.side(panel.agentId, sideId), panel: panel)
-            .environment(\.chatAgentId, panel.agentId)
+        let owner = panel.owner(PanelTab(kind: .side(id: sideId, title: "")))
+        SideChatView(model: ConvoHub.shared.side(owner, sideId), panel: panel)
+            .environment(\.chatAgentId, owner)
     }
 }
 
@@ -19,7 +20,7 @@ private struct SideChatView: View {
     let panel: SidePanel
     @State private var earlier: [SideDoc] = []
     var body: some View {
-        let agent = s.agents.first { $0.id == model.agentId }
+        let agent = s.anyAgent(model.agentId)
         VStack(spacing: 0) {
             if model.missing {
                 Line("This side chat was closed", 14, .medium, C.i10).frame(maxWidth: .infinity, maxHeight: .infinity)

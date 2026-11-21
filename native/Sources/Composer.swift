@@ -133,6 +133,10 @@ enum PlusItem: Int, CaseIterable {
     /// In a channel: the agent whose commands and skills "/" offers (the one that answers there, or the assistant).
     var commandsFor: String?
     var agent: Agent? { agentID.flatMap { id in store?.agents.first { $0.id == id } } }
+    /// Who /model, /btw and a side chat speak to: the chat's agent, or in a channel the one that answers there.
+    var speaker: Agent? { agent ?? commandsFor.flatMap { id in store?.anyAgent(id) } }
+    /// Where a side chat opens: the panel beside this box (a channel's own panel; nil = the agent's).
+    var sidePanel: (() -> SidePanel?)?
 
     func attach(_ target: Target, store: Store) {
         self.store = store
@@ -170,7 +174,7 @@ enum PlusItem: Int, CaseIterable {
         guard addObserver == nil else { return }
         addObserver = NotificationCenter.default.addObserver(forName: .addToMessage, object: nil, queue: .main) { [weak self] n in
             MainActor.assumeIsolated {
-                guard let self, let id = n.userInfo?["agentId"] as? String, id == self.agentID, let t = n.userInfo?["text"] as? String else { return }
+                guard let self, let id = n.userInfo?["agentId"] as? String, id == self.agentID || id == self.target.key, let t = n.userInfo?["text"] as? String else { return }
                 self.add(t)
             }
         }
@@ -209,7 +213,7 @@ enum PlusItem: Int, CaseIterable {
         if !suggestions.isEmpty { accept(); return }
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isEmpty else { return }
-        if words.hasPrefix("/model "), let agent {
+        if words.hasPrefix("/model "), let agent = speaker {
             // The agent's model is its own setting: it changes for good, here and in its settings.
             let name = String(words.dropFirst(7)).trimmingCharacters(in: .whitespaces)
             let value: Any = name.isEmpty || name == "default" ? NSNull() : name
@@ -219,9 +223,9 @@ enum PlusItem: Int, CaseIterable {
             return
         }
         // `/btw question`: asked in a side chat, not in this one. `/handoff`: pass this chat to another agent.
-        if let agent, words == "/btw" || words.hasPrefix("/btw ") {
+        if let agent = speaker, words == "/btw" || words.hasPrefix("/btw ") {
             DraftStore.shared.remember(words)
-            store?.openSideChat(agent, question: String(words.dropFirst(4)))
+            store?.openSideChat(agent, question: String(words.dropFirst(4)), in: sidePanel?())
             clearWords()
             return
         }
@@ -378,7 +382,7 @@ enum PlusItem: Int, CaseIterable {
             takeFocus()
         case .side:
             closeMenu()
-            if let agent { store?.openSideChat(agent) }
+            if let agent = speaker { store?.openSideChat(agent, in: sidePanel?()) }
         case .plugins: openPlugins()
         }
     }
@@ -430,7 +434,8 @@ enum PlusItem: Int, CaseIterable {
             // Agent Lab's own: a side question that stays out of the chat, and passing the chat to another agent.
             all.removeAll { $0.name == "btw" || $0.name == "handoff" }
             all.append(.init(name: "btw", about: "Ask about this chat without adding to it", hint: "<question>", kind: "command"))
-            all.append(.init(name: "handoff", about: "Pass this chat to another agent", hint: "", kind: "command"))
+            // Handing off is a chat's (a channel has no single agent to pass from).
+            if self.agentID != nil { all.append(.init(name: "handoff", about: "Pass this chat to another agent", hint: "", kind: "command")) }
             let order = ["command": 0, "skill": 1, "plugin": 2]
             let ranked = all.compactMap { c -> (Int, Catalog.Command)? in Rank.score(q, name: c.name, about: c.about).map { ($0, c) } }
                 .sorted { a, b in

@@ -77,6 +77,7 @@ struct StepRow: View {
     @State private var hovered = false
     /// The DM it's in: a helper's step opens the helper's own transcript in the side panel instead.
     @Environment(\.chatAgentId) private var agentId
+    @Environment(\.chatConv) private var conv
     private var step: Step { line.step }
     private var helper: Bool { step.verb == "Start a helper for" && agentId != nil }
     private var running: Bool { !step.done }
@@ -116,8 +117,10 @@ struct StepRow: View {
         }
     }
     private func openHelper() {
-        guard let agentId, let s = ConvoHub.shared.store, let agent = s.agents.first(where: { $0.id == agentId }) else { return }
-        SidePanel.of(agent, home: s.home).show(PanelTab(kind: .helper(id: step.id, title: step.line)))
+        guard let agentId, let s = ConvoHub.shared.store, let panel = s.panel(conv: conv, agentId: agentId) else { return }
+        let tab = PanelTab(kind: .helper(id: step.id, title: step.line))
+        if panel.agentId != agentId { panel.owners[tab.id] = agentId }
+        panel.show(tab)
     }
 }
 

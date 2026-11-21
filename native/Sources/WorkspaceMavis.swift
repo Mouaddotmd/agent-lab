@@ -287,6 +287,8 @@ struct MavisChannelHead: View {
     let panel: SidePanel
     /// The agents given this channel; the pill shows and changes them (none: the assistant).
     let given: [Agent]
+    /// The channel's state (Store.channelState), shown as a chat's is beside its name.
+    var state = "idle"
     let set: ([String]) -> Void
     @State private var picking = false
     var body: some View {
@@ -297,6 +299,7 @@ struct MavisChannelHead: View {
                 Text(name).font(F.font(MV.Text.name, .medium)).foregroundStyle(MV.Ink.t1)
             }
             .lineLimit(1).truncationMode(.tail)
+            MVChip(text: MavisToday.stateWord(state), done: state == "done")
             .layoutPriority(-1)                 // the crumb gives way first: the agent pill and tools always show
             Spacer(minLength: 0)
             MVAccessPill(given: given, open: $picking, set: set)

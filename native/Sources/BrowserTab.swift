@@ -75,7 +75,7 @@ private struct BrowserBody: View {
 
     private func openOmni() {
         guard omni == nil else { return }
-        let name = ConvoHub.shared.store?.agents.first { $0.id == panel.agentId }?.name ?? "the agent"
+        let name = ConvoHub.shared.store.flatMap { $0.panelAgent(panel) }?.name ?? "the agent"
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) { omni = OmniModel(agentName: name, start: page.url?.absoluteString ?? "") }
     }
@@ -93,9 +93,9 @@ private struct BrowserBody: View {
         switch p {
         case .open(let u): page.load(u)
         case .ask(let q):
-            guard let a = s.agents.first(where: { $0.id == panel.agentId }) else { return }
+            guard let a = s.panelAgent(panel) else { return }
             let about = page.url.map { "\n\n(I'm looking at \($0.absoluteString))" } ?? ""
-            s.openSideChat(a, question: q + about)
+            s.openSideChat(a, question: q + about, in: panel)
         }
     }
 
