@@ -214,9 +214,9 @@ struct MVProfileBar: View {
                     avatar
                     if open {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(s.handle).font(F.font(MV.Text.title, .medium)).foregroundStyle(MV.Ink.t1).lineLimit(1)
-                            Text(working == 0 ? "No agents working" : "\(working) \(working == 1 ? "agent" : "agents") working")
-                                .font(F.font(MV.Text.meta, .regular)).foregroundStyle(MV.Ink.t3).lineLimit(1)
+                            MVFadeText(text: s.handle, font: F.font(MV.Text.title, .medium), color: MV.Ink.t1)
+                            MVFadeText(text: working == 0 ? "No agents working" : "\(working) \(working == 1 ? "agent" : "agents") working",
+                                       font: F.font(MV.Text.meta, .regular), color: MV.Ink.t3)
                         }
                         .padding(.trailing, MV.Space.inset)
                     }
@@ -539,11 +539,11 @@ struct AgentLine: View {
             HStack(spacing: MV.Space.inset) {
                 MVAgentTile(agent: agent, live: state == "working", under: h ? MV.Tone.box2 : MV.Tone.box)
                 VStack(alignment: .leading, spacing: MV.Space.rowGap) {
-                    Text(agent.name).font(F.font(MV.Text.title, .medium)).foregroundStyle(MV.Ink.t1).lineLimit(1)
+                    MVFadeText(text: agent.name, font: F.font(MV.Text.title, .medium), color: MV.Ink.t1)
                     if state == "working" {
                         Shimmer(text: run?.activity ?? "Working", font: F.font(MV.Text.body, .regular), base: MV.Ink.t3, band: MV.Ink.t1)
                     } else {
-                        Text(MavisToday.stateWord(state)).font(F.font(MV.Text.body, .regular)).foregroundStyle(MV.Ink.t2).lineLimit(1)
+                        MVFadeText(text: MavisToday.stateWord(state), font: F.font(MV.Text.body, .regular), color: MV.Ink.t2)
                     }
                 }
                 Spacer(minLength: 0)

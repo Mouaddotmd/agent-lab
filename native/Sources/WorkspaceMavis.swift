@@ -175,7 +175,10 @@ struct MVSideRow: View {
                 if working {
                     Shimmer(text: name, font: F.font(MV.Text.title, .regular), base: selected ? MV.Ink.t2 : MV.Ink.t3, band: Color.white)
                 } else {
-                    Text(name).font(F.font(MV.Text.title, .regular)).foregroundStyle(selected ? Color.white : unread ? MV.Ink.t1 : MV.Ink.t2).lineLimit(1)
+                    // A long name fades out at its end (as the workspace's title), never "…"; while ⋯ shows it stops
+                    // before it, so the button never sits on the words.
+                    MVFadeText(text: name, font: F.font(MV.Text.title, .regular), color: selected ? Color.white : unread ? MV.Ink.t1 : MV.Ink.t2)
+                        .padding(.trailing, menu != nil && (hover || open) ? MV.Size.iconButton : 0)
                 }
                 Spacer(minLength: 0)
                 if unread { Circle().fill(MV.Accent.blue).frame(width: MV.Space.labelGap, height: MV.Space.labelGap) }
@@ -213,10 +216,10 @@ struct MVCategoryHead: View {
     var body: some View {
         HStack(spacing: MV.Space.labelGap) {
             if plain {
-                Text(name).font(F.font(MV.Text.control, .medium)).foregroundStyle(hover ? MV.Ink.t2 : MV.Ink.t3)
+                MVFadeText(text: name, font: F.font(MV.Text.control, .medium), color: hover ? MV.Ink.t2 : MV.Ink.t3)
                     .padding(.leading, MV.Space.labelGap).frame(height: MV.Workspace.tag)
             } else {
-                Text(name).font(F.font(MV.Text.control, .medium)).foregroundStyle(MV.Accent.onTag)
+                MVFadeText(text: name, font: F.font(MV.Text.control, .medium), color: MV.Accent.onTag)
                     .padding(.horizontal, MV.Space.labelGap).frame(height: MV.Workspace.tag)
                     .background(RoundedRectangle(cornerRadius: MV.Space.sm, style: .continuous).fill(hover ? MV.Workspace.lit(color) : color))
             }

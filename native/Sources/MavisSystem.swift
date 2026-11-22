@@ -80,11 +80,11 @@ enum MV {
         /// Your bubble a touch brighter while hovered (22% → 25% of the blue).
         static let bubbleLit = Color(0x789aff, 0.25)
         /// Motion (prototype mtGrow / mtItem): a 28 dot at its corner stretches into the pill on Atoll's open spring
-        /// at twice the speed; the contents fade in 6 pt from the corner, 35 ms in, 15 ms apart; it leaves faster, no bounce.
-        static let dot: CGFloat = 28, startScale: CGFloat = 0.92, startOpacity: Double = 0.6
+        /// at twice the speed, solid throughout; the contents slide 6 pt from the corner, 35 ms in, 15 ms apart; it leaves at once.
+        static let dot: CGFloat = 28, startScale: CGFloat = 0.92
         static let response: Double = 0.21, damping: Double = 0.8
         static let itemShift: CGFloat = 6, itemDelay: Double = 0.035, itemStep: Double = 0.015, itemTime: Double = 0.13
-        static let exitTime: Double = 0.12, exitScale: CGFloat = 0.96
+        static let exitTime: Double = 0.12
         static let press: CGFloat = 0.86, pressBack: Double = 0.26, copied: Double = 1.2
         /// How far under a hovered message the pointer can go and keep it (to reach the pill).
         static let reach: CGFloat = 26

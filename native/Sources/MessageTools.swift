@@ -44,8 +44,9 @@ struct MVMessageTools: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         // The morph: a dot at the corner, stretched to the pill's width.
         .mask(alignment: mine ? .trailing : .leading) { Capsule().frame(width: grown ? width : T.dot) }
-        .scaleEffect(visible ? (grown ? 1 : T.startScale) : T.exitScale, anchor: anchor)
-        .opacity(visible ? (grown ? 1 : T.startOpacity) : 0)
+        // Solid from its first frame (no fade): the dot grows into the pill, the mask uncovering its contents.
+        .scaleEffect(visible && !grown ? T.startScale : 1, anchor: anchor)
+        .opacity(visible ? 1 : 0)
         .allowsHitTesting(visible)
         .onAppear { if lit.on { arrive() } }
         .onChange(of: lit.on) { _, on in on ? arrive() : leave() }
@@ -67,8 +68,7 @@ struct MVMessageTools: View {
 
     /// Each piece fades in from the corner side, in order, once the pill has room.
     private func item<V: View>(_ i: Int, @ViewBuilder _ v: () -> V) -> some View {
-        v().opacity(itemsIn ? 1 : 0)
-            .offset(x: itemsIn ? 0 : (mine ? T.itemShift : -T.itemShift))
+        v().offset(x: itemsIn ? 0 : (mine ? T.itemShift : -T.itemShift))
             .animation(itemsIn ? .easeOut(duration: T.itemTime).delay(T.itemDelay + Double(i) * T.itemStep) : nil, value: itemsIn)
     }
 
@@ -81,13 +81,10 @@ struct MVMessageTools: View {
             itemsIn = true
         }
     }
+    /// Gone at once (Discord's): one pill at a time, never two while the pointer crosses rows quickly.
     private func leave() {
-        withAnimation(.easeOut(duration: T.exitTime)) { visible = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + T.exitTime) {
-            guard !lit.on else { return }
-            var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) { grown = false; itemsIn = false }
-        }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { visible = false; grown = false; itemsIn = false }
     }
     private func copy() {
         NSPasteboard.general.clearContents()
@@ -152,12 +149,6 @@ struct MVBubbleFill: View {
     }
 }
 
-/// Puts the hovered row above its neighbours, so its tools hang over the next one instead of under it.
-struct LitAbove: ViewModifier {
-    @ObservedObject var lit: Lit
-    func body(content: Content) -> some View { content.zIndex(lit.on ? 1 : 0) }
-}
-
 /// Where the tools hang, per kind of row: yours over your bubble's foot (its top 10 into it, at its right); the agent's
 /// 4 under its words, 4 out to the left. Only for messages that are done (not sending, queued or still being written).
 struct MVToolsSlot: View {
@@ -169,6 +160,8 @@ struct MVToolsSlot: View {
         let dm = !(conv ?? agentId).hasPrefix("c_") && !agentId.isEmpty
         MVMessageTools(lit: RowLights.shared.lit(rowId), mine: mine, time: time.map(clock), agentId: agentId,
                        messageId: messageId, words: words, canRewind: dm)
+            // Where it is, for the hover tracker (the pointer on the tools keeps their row lit).
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Follower.space)) } action: { RowLights.shared.tools[rowId] = $0 }
             // Placed from the message's bottom corner (the overlay's), without taking room: yours moved down so only its
             // top 10 sits on the bubble; the agent's a full pill plus 4 down and 4 out to the left.
             .offset(x: mine ? 0 : -MV.MessageTools.out,

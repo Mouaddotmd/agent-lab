@@ -167,8 +167,6 @@ struct ChatTranscript: View, Equatable {
                             // thread while scrolling, 19 Nov trace).
                             // MAVIS has no row hover in the chat (prototype): only the classic look lights rows.
                             .background { if !MV.on { RowLightFill(lit: RowLights.shared.lit(row.id)).padding(.horizontal, -16) } }
-                            // MAVIS: the hovered row above the next, so its tools hang over it.
-                            .modifier(LitAbove(lit: RowLights.shared.lit(row.id)))
                             // The match in view while finding, and a jump's row lit for a moment.
                             .background {
                                 if flash == row.id || (!finding.isEmpty && match == row.id) {
@@ -180,13 +178,19 @@ struct ChatTranscript: View, Equatable {
                             // Where each message sits in the conversation (not on screen: scrolling doesn't change
                             // it), so the one you're reading can be kept in place when the width changes.
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Follower.space)) } action: { f in follower.rowMoved(row.id, f) }
+                            // Each row drawn above the ones after it (outermost, where the stack reads it): a row's tools
+                            // hang down over the next row and are never under its bubble. Fixed, so a hover redraws nothing.
+                            .zIndex(Double(rows.count - i))
                     }
-                    Color.clear.frame(height: 16)            // the space under the last message
+                    // The space under the last message (MAVIS: room for its tools, which hang under it).
+                    Color.clear.frame(height: MV.on ? MV.MessageTools.height + MV.MessageTools.below : 16)
                 }
                 // MAVIS: the conversation keeps a reading column, centred; the scroller stays full width.
                 .frame(maxWidth: MV.on ? MV.Chat.column : .infinity)
                 .frame(maxWidth: .infinity)
                 .background(ScrollProbe(follower: follower))
+                // Where the probe sits in the conversation's coordinates: the pointer is read through the probe.
+                .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named(Follower.space)).origin } action: { follower.probeOrigin = $0 }
                 // MAVIS: the feed's 8 32 6 (spec 9).
                 .padding(.horizontal, MV.on ? MV.Chat.sides : 16).padding(.top, 8)
                 .coordinateSpace(name: Follower.space)
@@ -292,6 +296,9 @@ final class Follower: ObservableObject {
     /// The conversation's own coordinates: each message's place in it.
     static let space = "transcript"
     private var rowFrames: [String: CGRect] = [:]
+    /// The probe (an NSView in the conversation's coordinates) and where it sits in them: the pointer is read through it.
+    weak var probe: NSView?
+    var probeOrigin: CGPoint = .zero
     /// Scrolled up, reading: the message at the top of the view and how far down it the view's top edge is (a share of
     /// its height). A new width rewraps every message, so the same offset would show something else (17 Nov: the chat
     /// "scrolled by itself" while the side panel opened or its edge moved). Instead the view is put back on the same
@@ -440,15 +447,30 @@ final class Follower: ObservableObject {
     /// The chat's one hover tracker: the row under the pointer (by the rows' known places), lit; checked on every mouse
     /// move and every scroll (rows pass under a still pointer).
     @MainActor func hover() {
-        guard let view = scrollView, let window = view.window, let doc = view.documentView else { RowLights.shared.light(nil); return }
+        let lights = RowLights.shared
+        // Only ever puts out a row of its own: another chat in the window (side chat, a kept one) never clears this one's.
+        let mine = { (id: String?) in id.map { self.rowFrames[$0] != nil } ?? false }
+        guard let view = scrollView, let window = view.window, let probe else { if mine(lights.current) { lights.light(nil) }; return }
         let p = window.mouseLocationOutsideOfEventStream
-        guard view.bounds.contains(view.convert(p, from: nil)) else { RowLights.shared.light(nil); return }
-        let y = doc.convert(p, from: nil).y
-        // MAVIS: the row keeps its tools while the pointer goes down into them (they hang under it).
-        if MV.on, let cur = RowLights.shared.current, let f = rowFrames[cur], f.minY <= y, y < f.maxY + MV.MessageTools.reach {
-            RowLights.shared.light(cur); return
+        guard view.bounds.contains(view.convert(p, from: nil)) else { if mine(lights.current) { lights.light(nil) }; return }
+        // The pointer in the conversation's coordinates, the same ones the rows report (read through the probe, which
+        // sits in them, not through the scroll view's document: its own origin and insets put the rows off by a row).
+        let local = probe.convert(p, from: nil)
+        let at = CGPoint(x: local.x + probeOrigin.x, y: local.y + probeOrigin.y)
+        // MAVIS: the lit row keeps its tools while the pointer is on them (they hang over the next row).
+        if MV.on, let cur = lights.current, let t = lights.tools[cur], mine(cur), t.insetBy(dx: -MV.MessageTools.pad, dy: -MV.MessageTools.pad).contains(at) {
+            return
         }
-        RowLights.shared.light(rowFrames.first { $0.value.minY <= y && y < $0.value.maxY }?.key)
+        // Only the height matters, across the whole width: the row whose top is the last one above the pointer, the
+        // gap under it included (no flicker between rows); nothing under the last row.
+        let y = at.y
+        var best: (id: String, f: CGRect)?
+        var below = false
+        for (id, f) in rowFrames {
+            if f.minY <= y { if best == nil || f.minY > best!.f.minY { best = (id, f) } } else { below = true }
+        }
+        if let b = best, y >= b.f.maxY, !below { lights.light(mine(lights.current) ? nil : lights.current); return }
+        if let b = best { lights.light(b.id) } else if mine(lights.current) { lights.light(nil) }
     }
     private var inJumpWindow: Bool {
         Date().timeIntervalSince(openedAt) < 0.6 || CACurrentMediaTime() < resizingUntil || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -599,6 +621,7 @@ private struct ScrollProbe: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError() }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            track(enclosingScrollView)
             follower.scrollView = enclosingScrollView
             follower.watch(window != nil ? enclosingScrollView : nil)
             enclosingScrollView?.verticalScrollElasticity = .none      // no bounce past the ends
@@ -623,6 +646,23 @@ private struct ScrollProbe: NSViewRepresentable {
         /// Settled: the timer stops (the app sleeps between frames); anything that changes the chat wakes it.
         @objc private func tick(_ l: CADisplayLink) { if !follower.frame(l.timestamp) { link?.invalidate(); link = nil } }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        /// The pointer over the chat, on every move, from AppKit's own tracking (the window's mouse-moved stream alone
+        /// arrived only now and then: the lit row lagged the pointer by a row, 22 Nov recording).
+        private var area: NSTrackingArea?
+        private weak var tracked: NSView?
+        private func track(_ v: NSView?) {
+            if let area, let tracked { tracked.removeTrackingArea(area) }
+            area = nil; tracked = nil
+            guard let v, window != nil else { return }
+            let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: nil)
+            v.addTrackingArea(a); area = a; tracked = v
+        }
+        override func mouseMoved(with event: NSEvent) { follower.hover() }
+        override func mouseEntered(with event: NSEvent) { follower.hover() }
+        override func mouseExited(with event: NSEvent) { follower.hover() }
+        /// Top-down, as SwiftUI lays out: a pointer read through it is in the conversation's own coordinates.
+        override var isFlipped: Bool { true }
+        override func viewWillMove(toWindow w: NSWindow?) { super.viewWillMove(toWindow: w); follower.probe = w == nil ? nil : self }
     }
 }
 
@@ -729,7 +769,8 @@ struct ChatRowView: View, Equatable {
                         // Hovered: the row lights barely and its tools hang under the words, at the left.
                         .background(MVRowLight(lit: RowLights.shared.lit(row.id)))
                         .overlay(alignment: .bottomLeading) {
-                            if !turn.running, !turn.isEmpty {
+                            // Only for words you can copy (an "Interrupted" with no answer has none).
+                            if !turn.running, !turn.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 MVToolsSlot(rowId: row.id, mine: false, time: turn.at, agentId: agent?.id ?? turn.by ?? "", messageId: turn.id, words: turn.text)
                             }
                         }
@@ -821,6 +862,8 @@ final class Lit: ObservableObject { @Published var on = false }
     static let shared = RowLights()
     private var lits: [String: Lit] = [:]
     private(set) var current: String?
+    /// Where each row's tools are, in the conversation's coordinates (the pointer on them keeps the row lit).
+    var tools: [String: CGRect] = [:]
     func lit(_ id: String) -> Lit { if let l = lits[id] { return l }; let l = Lit(); lits[id] = l; return l }
     func light(_ id: String?) {
         guard id != current else { return }

@@ -608,7 +608,8 @@ struct ConvRow: View {
                        badge: s.unreadReplies(agent.id) + (st == "needs" ? s.approvalsFor(agent.id).count : 0))
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: MV.Space.sm) {
-                        Text(agent.name).font(F.font(MV.Text.name, .medium)).foregroundStyle(on ? Color.white : MV.Ink.t1).lineLimit(1)
+                        // Long words fade out at their end (as the workspace's title), never "…".
+                        MVFadeText(text: agent.name, font: F.font(MV.Text.name, .medium), color: on ? Color.white : MV.Ink.t1)
                         Spacer(minLength: 0)
                         if t > 0 { Text(shortAgo(t)).font(F.font(MV.Text.footer, .regular)).foregroundStyle(on ? MV.Accent.selectedText : MV.Ink.t3).monospacedDigit()
                             .opacity(rowHover || menuOpen ? 0 : 1) }          // ⋯ takes its place on hover
@@ -618,8 +619,8 @@ struct ConvRow: View {
                         if st == "working" {
                             Shimmer(text: statusLine(st), font: F.font(MV.Text.preview, .regular), base: on ? MV.Ink.t3 : MV.Ink.t3, band: on ? Color.white : MV.Ink.t1)
                         } else {
-                            Text(statusLine(st)).font(F.font(MV.Text.preview, .regular))
-                                .foregroundStyle(st == "failed" ? MV.Accent.red : on ? MV.Accent.selectedText : MV.Ink.t2).lineLimit(1)
+                            MVFadeText(text: statusLine(st), font: F.font(MV.Text.preview, .regular),
+                                       color: st == "failed" ? MV.Accent.red : on ? MV.Accent.selectedText : MV.Ink.t2)
                         }
                     }
                     .frame(height: MV.Text.previewLine)
