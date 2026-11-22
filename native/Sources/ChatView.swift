@@ -144,6 +144,19 @@ struct ChatTranscript: View, Equatable {
         let lastSent = rows.last { if case .you = $0 { true } else { false } }?.id
         let me = agent?.id ?? ""
         let finding = find.query(me), match = find.current[me]?.row
+        if Self.table {
+            ZStack(alignment: .bottomTrailing) {
+                TranscriptTable(agent: agent, cast: cast, rows: rows, intro: intro, follower: follower,
+                                find: { row in me.isEmpty ? "" : find.lit(me, row.id) },
+                                match: finding.isEmpty ? nil : match, flash: flash)
+                    .onAppear { follower.opened() }
+                    .onChange(of: lastSent) { old, new in if new != nil, new != old { follower.sent() } }
+                jump
+            }
+            .onChange(of: find.current[me]) { _, t in if let t, !me.isEmpty { bringInTable(t.row, light: false) } }
+            .onChange(of: find.jump[me]) { _, t in if let t, !me.isEmpty { bringInTable(t.row, light: true); find.jumped(me) } }
+            .onAppear { if !me.isEmpty, let t = find.jump[me] { DispatchQueue.main.async { bringInTable(t.row, light: true); find.jumped(me) } } }
+        } else {
         ScrollViewReader { proxy in
         ZStack(alignment: .bottomTrailing) {
             ScrollView(.vertical) {
@@ -232,18 +245,36 @@ struct ChatTranscript: View, Equatable {
             }
             .onAppear { follower.opened() }
             .onChange(of: lastSent) { old, new in if new != nil, new != old { follower.sent() } }
-            if MV.on {
-                // MAVIS: its right edge on the chatbox's right edge (same column, same side inset).
-                JumpToLatest(follower: follower)
-                    .frame(maxWidth: MV.Chat.column, alignment: .trailing).frame(maxWidth: .infinity)
-                    .padding(.horizontal, MV.Space.section - MV.Space.xs).padding(.bottom, MV.Space.inset)
-            } else {
-                JumpToLatest(follower: follower).padding(.trailing, 16).padding(.bottom, 12)
-            }
+            jump
         }
         .onChange(of: find.current[me]) { _, t in if let t, !me.isEmpty { bring(t.row, proxy, light: false) } }
         .onChange(of: find.jump[me]) { _, t in if let t, !me.isEmpty { bring(t.row, proxy, light: true); find.jumped(me) } }
         .onAppear { if !me.isEmpty, let t = find.jump[me] { DispatchQueue.main.async { bring(t.row, proxy, light: true); find.jumped(me) } } }
+        }
+        }
+    }
+    /// Back to the latest message, at the view's foot.
+    @ViewBuilder private var jump: some View {
+        if MV.on {
+            // MAVIS: its right edge on the chatbox's right edge (same column, same side inset).
+            JumpToLatest(follower: follower)
+                .frame(maxWidth: MV.Chat.column, alignment: .trailing).frame(maxWidth: .infinity)
+                .padding(.horizontal, MV.Space.section - MV.Space.xs).padding(.bottom, MV.Space.inset)
+        } else {
+            JumpToLatest(follower: follower).padding(.trailing, 16).padding(.bottom, 12)
+        }
+    }
+    /// The conversation in an AppKit table (TranscriptTable.swift); `defaults write dev.agentlab.native chatStack -bool YES`
+    /// goes back to the one SwiftUI stack, to compare.
+    static let table = !UserDefaults.standard.bool(forKey: "chatStack")
+    /// Brings a row to the middle of the table's view, and lights it for a moment after a jump.
+    private func bringInTable(_ row: String, light: Bool) {
+        follower.following = false
+        DispatchQueue.main.async {
+            follower.list?.bring(row)
+            guard light else { return }
+            flash = row
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if flash == row { flash = nil } }
         }
     }
     /// Brings a row into view (drawing older rows first if it's among them), and lights it for a moment after a jump.
@@ -296,6 +327,26 @@ final class Follower: ObservableObject {
     /// The conversation's own coordinates: each message's place in it.
     static let space = "transcript"
     private var rowFrames: [String: CGRect] = [:]
+    /// The table that holds the conversation (TranscriptTable.swift): it says where its rows are. Without it, the rows'
+    /// own reports (rowMoved) do.
+    weak var list: TranscriptList?
+    private func rowFrame(_ id: String) -> CGRect? { if let list { return MainActor.assumeIsolated { list.frame(of: id) } }; return rowFrames[id] }
+    private func rowHit(_ y: CGFloat) -> (key: String, value: CGRect)? {
+        if let list { return MainActor.assumeIsolated { list.row(containing: y) } }
+        return rowFrames.first(where: { $0.value.minY <= y && $0.value.maxY > y }).map { ($0.key, $0.value) }
+    }
+    private func owns(_ id: String) -> Bool { if let list { return MainActor.assumeIsolated { list.has(id) } }; return rowFrames[id] != nil }
+    /// Rows above the view changed height (measured for real at last): the view moves by the same amount in the same
+    /// pass, so nothing on screen shifts.
+    func shift(_ dy: CGFloat) {
+        guard let view = scrollView, abs(dy) > 0.01 else { return }
+        let clip = view.contentView
+        moving = true
+        clip.scroll(to: CGPoint(x: clip.bounds.origin.x, y: max(0, clip.bounds.origin.y + dy))); view.reflectScrolledClipView(clip)
+        moving = false
+        if let h = heldY { heldY = h + dy }
+        if noted.y >= 0 { noted = (clip.bounds.minY, view.documentView?.frame.height ?? noted.h, clip.bounds.width) }
+    }
     /// The probe (an NSView in the conversation's coordinates) and where it sits in them: the pointer is read through it.
     weak var probe: NSView?
     var probeOrigin: CGPoint = .zero
@@ -323,7 +374,7 @@ final class Follower: ObservableObject {
     var atTop: (id: String, share: CGFloat)? {
         guard let view = scrollView else { return nil }
         let y = view.contentView.bounds.minY
-        guard let hit = rowFrames.first(where: { $0.value.minY <= y && $0.value.maxY > y }) else { return nil }
+        guard let hit = rowHit(y) else { return nil }
         return (hit.key, (y - hit.value.minY) / max(1, hit.value.height))
     }
     var isFollowing: Bool { following }
@@ -341,11 +392,11 @@ final class Follower: ObservableObject {
         guard let view = scrollView else { return }
         let y = view.contentView.bounds.minY
         noted = (y, view.documentView?.frame.height ?? 0, view.contentView.bounds.width)
-        guard let hit = rowFrames.first(where: { $0.value.minY <= y && $0.value.maxY > y }) else { reading = nil; return }
+        guard let hit = rowHit(y) else { reading = nil; return }
         reading = (hit.key, (y - hit.value.minY) / max(1, hit.value.height))
     }
     private func putBack() {
-        guard let r = reading, let f = rowFrames[r.id], let view = scrollView, let doc = view.documentView else { return }
+        guard let r = reading, let f = rowFrame(r.id), let view = scrollView, let doc = view.documentView else { return }
         let clip = view.contentView
         let maxY = max(0, doc.frame.height + view.contentInsets.bottom - clip.bounds.height)
         let y = min(max(0, (f.minY + r.share * f.height).rounded()), maxY)
@@ -370,7 +421,10 @@ final class Follower: ObservableObject {
 
     /// Hears the clip view move the moment it does (before the frame is drawn), so a move that isn't ours is put back
     /// before it can be seen (Mavis 16 Nov: caught a frame later, rows showed twice, offset).
+    /// The follower of the chat on screen (the scroll test drives it).
+    nonisolated(unsafe) static weak var active: Follower?
     func watch(_ view: NSScrollView?) {
+        if view != nil { Follower.active = self }
         if let events { NSEvent.removeMonitor(events) }
         events = nil
         if let view {
@@ -443,7 +497,7 @@ final class Follower: ObservableObject {
     private var watchingDoc: NSObjectProtocol?, gliding: NSObjectProtocol?, watchingView: NSObjectProtocol?
     private var lastHeight: CGFloat = 0
     /// Where a row sits in the conversation (for keeping your place when earlier rows join above).
-    func frame(of id: String) -> CGRect? { rowFrames[id] }
+    func frame(of id: String) -> CGRect? { rowFrame(id) }
     /// The chat's one hover tracker: the row under the pointer (by the rows' known places), lit; checked on every mouse
     /// move and every scroll (rows pass under a still pointer).
     /// While the chat scrolls, no hover work at all (rows passing under a still pointer lit one after another, each a
@@ -453,7 +507,7 @@ final class Follower: ObservableObject {
     @MainActor func scrolled() {
         let wasStill = CACurrentMediaTime() >= scrollingUntil
         scrollingUntil = CACurrentMediaTime() + MV.Motion.hoverAfterScroll
-        if let c = RowLights.shared.current, rowFrames[c] != nil { RowLights.shared.light(nil) }
+        if let c = RowLights.shared.current, owns(c) { RowLights.shared.light(nil) }
         guard wasStill else { return }
         func check() {
             let left = scrollingUntil - CACurrentMediaTime()
@@ -465,7 +519,7 @@ final class Follower: ObservableObject {
         if CACurrentMediaTime() < scrollingUntil { return }
         let lights = RowLights.shared
         // Only ever puts out a row of its own: another chat in the window (side chat, a kept one) never clears this one's.
-        let mine = { (id: String?) in id.map { self.rowFrames[$0] != nil } ?? false }
+        let mine = { (id: String?) in id.map { self.owns($0) } ?? false }
         guard let view = scrollView, let window = view.window, let probe else { if mine(lights.current) { lights.light(nil) }; return }
         let p = window.mouseLocationOutsideOfEventStream
         guard view.bounds.contains(view.convert(p, from: nil)) else { if mine(lights.current) { lights.light(nil) }; return }
@@ -474,7 +528,13 @@ final class Follower: ObservableObject {
         let local = probe.convert(p, from: nil)
         let at = CGPoint(x: local.x + probeOrigin.x, y: local.y + probeOrigin.y)
         // MAVIS: the lit row keeps its tools while the pointer is on them (they hang over the next row).
-        if MV.on, let cur = lights.current, let t = lights.tools[cur], mine(cur), t.insetBy(dx: -MV.MessageTools.pad, dy: -MV.MessageTools.pad).contains(at) {
+        if list == nil, MV.on, let cur = lights.current, let t = lights.tools[cur], mine(cur), t.insetBy(dx: -MV.MessageTools.pad, dy: -MV.MessageTools.pad).contains(at) {
+            return
+        }
+        // In the table each row holds its own tools (they hang in its own room): the row at the pointer's height is the
+        // one, across the whole width; none under the last.
+        if let list {
+            if let id = list.row(containing: at.y)?.key { lights.light(id) } else if mine(lights.current) { lights.light(nil) }
             return
         }
         // Only the height matters, across the whole width: the row whose top is the last one above the pointer, the
@@ -542,7 +602,7 @@ final class Follower: ObservableObject {
                 }
                 heldY = keep
                 noted.h = doc.frame.height; noted.w = clip.bounds.width
-            } else if (resizing || layoutChanged), let r = reading, rowFrames[r.id] != nil {
+            } else if (resizing || layoutChanged), let r = reading, rowFrame(r.id) != nil {
                 putBack()
                 noted = (clip.bounds.minY, doc.frame.height, clip.bounds.width)
             } else if reading == nil || abs(y - noted.y) > 0.5 { noteReading() }
@@ -626,7 +686,7 @@ final class Follower: ObservableObject {
 }
 
 /// Finds the AppKit scroll view under the SwiftUI one and drives the follower from the screen's refresh.
-private struct ScrollProbe: NSViewRepresentable {
+struct ScrollProbe: NSViewRepresentable {
     let follower: Follower
     func makeNSView(context: Context) -> NSView { Probe(follower: follower) }
     func updateNSView(_ view: NSView, context: Context) {}
@@ -640,6 +700,7 @@ private struct ScrollProbe: NSViewRepresentable {
             track(enclosingScrollView)
             follower.scrollView = enclosingScrollView
             follower.watch(window != nil ? enclosingScrollView : nil)
+            if window != nil { DispatchQueue.main.async { [follower] in MainActor.assumeIsolated { follower.list?.openIfReady() } } }
             enclosingScrollView?.verticalScrollElasticity = .none      // no bounce past the ends
             CapsuleScroller.install(in: enclosingScrollView)
             link?.invalidate(); link = nil
@@ -894,7 +955,7 @@ final class Lit: ObservableObject { @Published var on = false }
         if let id { lit(id).on = true }
     }
 }
-private struct RowLightFill: View {
+struct RowLightFill: View {
     @ObservedObject var lit: Lit
     var body: some View { Rectangle().fill(Color.white(lit.on ? 0.025 : 0)) }
 }
@@ -1741,6 +1802,50 @@ struct Shimmer: View {
 /// longer than the display's own interval by half again). Costs one display link while scrolling, nothing at rest.
 @MainActor final class ScrollMeter: NSObject {
     static let shared = ScrollMeter()
+    /// With the meter on, `dev.agentlab.native.scrollTest` (a distributed notification, userInfo "px" and "s") scrolls the
+    /// chat under the window's middle with trackpad-like wheel events sent inside the app: measured without anyone's hand.
+    func listen() {
+        guard Self.on else { return }
+        DistributedNotificationCenter.default().addObserver(forName: .init("dev.agentlab.native.scrollTest"), object: nil, queue: .main) { n in
+            let px = Double(n.userInfo?["px"] as? String ?? "") ?? 3000, secs = Double(n.userInfo?["s"] as? String ?? "") ?? 2
+            let open = n.userInfo?["open"] as? String
+            MainActor.assumeIsolated {
+                if let open { ConvoHub.shared.store?.openChat(open); return }
+                ScrollMeter.shared.drive(px: px, secs: secs)
+            }
+        }
+    }
+    /// The chat's scroll view on screen (the table's, or the stack's).
+    private func chat(in v: NSView?) -> NSScrollView? {
+        guard let v, !v.isHiddenOrHasHiddenAncestor else { return nil }
+        if let sv = v as? NSScrollView, sv.documentView is TranscriptTableView || sv.contentView.subviews.first?.subviews.contains(where: { $0 is NSHostingView<AnyView> }) == true || sv.frame.height > 300 && sv.documentView?.frame.height ?? 0 > 2000 { return sv }
+        for sub in v.subviews { if let hit = chat(in: sub) { return hit } }
+        return nil
+    }
+    private func drive(px: Double, secs: Double) {
+        let found = NSApp.windows.lazy.compactMap { w in self.chat(in: w.contentView) }.first
+        guard let sv = found else { return }
+        // Moves the view as a hand would, every display frame, with the follower told it's a hand (so it doesn't pull
+        // back to the end): what's measured is the drawing and layout while the conversation moves.
+        Follower.active?.touching = true
+        Follower.active?.following = false
+        let from = sv.contentView.bounds.origin.y, start = CACurrentMediaTime()
+        driving = (sv, from, -px, secs, start)
+        drivingLink?.invalidate()
+        let l = sv.displayLink(target: self, selector: #selector(driveTick(_:)))
+        l.add(to: .main, forMode: .common)
+        drivingLink = l
+    }
+    private var driving: (sv: NSScrollView, from: CGFloat, by: Double, secs: Double, start: CFTimeInterval)?
+    private var drivingLink: CADisplayLink?
+    @objc private func driveTick(_ l: CADisplayLink) {
+        guard let d = driving else { l.invalidate(); return }
+        let t = min(1, (CACurrentMediaTime() - d.start) / d.secs)
+        let maxY = max(0, (d.sv.documentView?.frame.height ?? 0) - d.sv.contentView.bounds.height)
+        let y = min(max(0, d.from + CGFloat(d.by * t)), maxY)
+        d.sv.contentView.scroll(to: NSPoint(x: 0, y: y)); d.sv.reflectScrolledClipView(d.sv.contentView)
+        if t >= 1 { l.invalidate(); drivingLink = nil; driving = nil; Follower.active?.touching = false }
+    }
     /// Off unless asked for: `defaults write dev.agentlab.native scrollMeter -bool YES`.
     static let on = UserDefaults.standard.bool(forKey: "scrollMeter")
     private var link: CADisplayLink?

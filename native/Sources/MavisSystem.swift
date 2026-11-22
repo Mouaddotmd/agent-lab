@@ -298,6 +298,17 @@ enum MV {
     enum Chat {
         /// The space under the last message.
         static let tail: CGFloat = 16
+        /// The transcript's table (TranscriptTable.swift): rows kept alive off screen (their open folds survive a scroll
+        /// away and back), how long each display frame may spend measuring rows ahead of you, and how many screens of the
+        /// newest rows are measured before a chat first shows.
+        static let keptRows = 600
+        /// Screens of rows kept in place above and below the view (the rest wait aside, already built).
+        static let keptScreens: CGFloat = 1
+        static let measureBudget: Double = 0.004
+        static let firstScreens: CGFloat = 2
+        /// A row not measured yet: its height guessed from its words (a line per this many points of them, at this line
+        /// height, plus its own room).
+        static let guessCharWidth: CGFloat = 7.2, guessLine: CGFloat = 23, guessRoom: CGFloat = 56
         static let bubbleLead: CGFloat = 96       // your bubble never starts closer than this to the left
         static let bubbleX: CGFloat = 16, bubbleY: CGFloat = 10, bubbleRadius: CGFloat = 22   // a one-line bubble is a full pill
         static let readWidth: CGFloat = 640       // the agent's words

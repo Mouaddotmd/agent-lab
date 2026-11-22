@@ -104,6 +104,7 @@ final class Store: ObservableObject {
         AgentHands.start(self)
         // A mouse wheel glides as on mouad.work, everywhere that scrolls up and down (SmoothScroll.swift).
         SmoothScroll.shared.start()
+        ScrollMeter.shared.listen()
         ClickAway.install()
         FileNames.shared.prepare()
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [engine] _ in
