@@ -69,7 +69,7 @@ struct MVMessageTools: View {
     /// Each piece fades in from the corner side, in order, once the pill has room.
     private func item<V: View>(_ i: Int, @ViewBuilder _ v: () -> V) -> some View {
         v().offset(x: itemsIn ? 0 : (mine ? T.itemShift : -T.itemShift))
-            .animation(itemsIn ? .easeOut(duration: T.itemTime).delay(T.itemDelay + Double(i) * T.itemStep) : nil, value: itemsIn)
+            .animation(itemsIn ? Animation.timingCurve(0.23, 1, 0.32, 1, duration: T.itemTime).delay(T.itemDelay + Double(i) * T.itemStep) : nil, value: itemsIn)
     }
 
     private func arrive() {
@@ -77,7 +77,7 @@ struct MVMessageTools: View {
         withTransaction(t) { grown = false; itemsIn = false; visible = true }
         DispatchQueue.main.async {
             guard lit.on else { return }
-            withAnimation(.spring(response: T.response, dampingFraction: T.damping)) { grown = true }
+            withAnimation(T.grow) { grown = true }
             itemsIn = true
         }
     }

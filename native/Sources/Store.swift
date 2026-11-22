@@ -327,7 +327,6 @@ final class Store: ObservableObject {
                 let back = try await engine.call("agent:rewind", [agentId, real], as: Back.self)
                 await loadMessages(agentId)
                 restore[agentId] = DraftStore.Draft(text: back.text, images: back.images, files: [])
-                toast = "Went back." + (back.note.map { " " + $0 } ?? "")
             } catch { toast = error.localizedDescription }
         }
     }
@@ -355,7 +354,6 @@ final class Store: ObservableObject {
                 if !agents.contains(where: { $0.id == f.agent.id }) { agents.append(f.agent) }
                 if let st = try? await engine.call("state", as: EngineState.self) { workspaces = st.workspaces }
                 openChat(f.agent.id)
-                toast = "Branched into \(f.agent.name)."
             } catch { toast = error.localizedDescription }
         }
     }
@@ -392,7 +390,6 @@ final class Store: ObservableObject {
                 if let st = try? await engine.call("state", as: EngineState.self) { workspaces = st.workspaces }
                 restore[f.agent.id] = DraftStore.Draft(text: f.text, images: f.images, files: [])
                 openChat(f.agent.id)
-                toast = "Forked into \(f.agent.name). Change the message and send it."
             } catch { toast = error.localizedDescription }
         }
     }
@@ -401,13 +398,11 @@ final class Store: ObservableObject {
     /// it starts on it. The note takes a few seconds to write.
     func handOff(_ from: String, to: String) {
         guard let target = agents.first(where: { $0.id == to }) else { return }
-        toast = "Writing a hand-over note for \(target.name)…"
         Task {
             do {
                 _ = try await engine.call("convo:handoff", [from, to])
                 await loadMessages(from)
                 openChat(to)
-                toast = "Handed to \(target.name)."
             } catch { toast = error.localizedDescription }
         }
     }
@@ -504,7 +499,6 @@ final class Store: ObservableObject {
         Task {
             do {
                 _ = try await engine.call("agent:plugin", [id, plugin.id, on])
-                toast = "\(plugin.name) is \(on ? "on" : "off")."
                 loadCatalog(id, fresh: true)
             } catch {
                 if let i = plugins[id]?.firstIndex(where: { $0.id == plugin.id }) { plugins[id]?[i].enabled = !on }
@@ -518,7 +512,6 @@ final class Store: ObservableObject {
         Task {
             do {
                 try await updateAgent(agent.id, ["claudeSetup": on])
-                toast = on ? "\(agent.name) now uses your Claude Code setup." : "\(agent.name) runs on Agent Lab's rules only."
                 loadCatalog(agent.id, fresh: true)
             } catch { toast = error.localizedDescription }
         }
@@ -536,7 +529,6 @@ final class Store: ObservableObject {
             let copy = try await engine.call("agent:duplicate", [id], as: Agent.self)
             agents.append(copy)
             if let st = try? await engine.call("state", as: EngineState.self) { workspaces = st.workspaces }
-            toast = "Made \(copy.name)."
             openChat(copy.id)
         } catch { toast = error.localizedDescription }
     }
@@ -579,7 +571,7 @@ final class Store: ObservableObject {
     func setMuted(_ w: Workspace, _ on: Bool) {
         if let i = workspaces.firstIndex(where: { $0.id == w.id }) { workspaces[i].muted = on }
         Task {
-            do { try await updateWorkspace(w.id, ["muted": on]); toast = on ? "\(w.name) is muted." : "\(w.name) is unmuted." }
+            do { try await updateWorkspace(w.id, ["muted": on]) }
             catch { toast = error.localizedDescription }
         }
     }

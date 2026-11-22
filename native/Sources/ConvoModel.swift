@@ -206,8 +206,7 @@ struct LiveContext: Codable, Equatable {
     func stop() {
         Task {
             do {
-                let r = try await ConvoHub.shared.store?.engine.call("convo:stopHelper", [agentId, id]) as? String
-                if r == "run" { ConvoHub.shared.store?.toast = "Stopped the run (this helper can't be stopped on its own)." }
+                _ = try await ConvoHub.shared.store?.engine.call("convo:stopHelper", [agentId, id])
             } catch { ConvoHub.shared.store?.toast = error.localizedDescription }
         }
     }

@@ -224,7 +224,6 @@ enum PlusItem: Int, CaseIterable {
             let name = String(words.dropFirst(7)).trimmingCharacters(in: .whitespaces)
             let value: Any = name.isEmpty || name == "default" ? NSNull() : name
             Task { try? await store?.updateAgent(agent.id, ["model": value]) }
-            store?.toast = "\(agent.name) now uses \(name.isEmpty ? "its default model" : name)."
             clearWords()
             return
         }

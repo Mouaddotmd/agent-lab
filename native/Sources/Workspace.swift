@@ -231,7 +231,6 @@ struct WorkspaceForm: View {
             do {
                 if let w = editing {
                     try await s.updateWorkspace(w.id, ["name": n, "about": about, "color": Look.str(color), "image": (image as Any?) ?? NSNull()])
-                    s.toast = "Saved"
                 } else {
                     let w = try await s.createWorkspace(name: n, about: about, color: Look.str(color), path: path, image: image)
                     s.openSpace(w.id)
@@ -649,7 +648,7 @@ struct WorkspaceActions: View {
         if let p = w.path {
             items.append(.init(symbol: "folder", title: "Open folder") { NSWorkspace.shared.open(URL(fileURLWithPath: p)) })
             items.append(.init(symbol: "doc.on.doc", title: "Copy path") {
-                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(p, forType: .string); s.toast = "Copied \((p as NSString).abbreviatingWithTildeInPath)."
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(p, forType: .string)
             })
         }
         items.append(.divider)

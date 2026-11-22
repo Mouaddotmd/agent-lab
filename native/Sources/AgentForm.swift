@@ -124,7 +124,6 @@ struct NewAgentForm: View {
                 let ws = s.currentWorkspace
                 let a = try await s.createAgent(name: n, job: job, look: look, operator: op, model: op == "claude-code" ? modelId : nil, permission: perm, cwd: ws?.path ?? s.home, workspace: ws?.id)
                 s.newAgentOpen = false
-                s.toast = "\(a.name) joined"
                 if ws != nil { s.openAgent = a.id } else { s.openChat(a.id) }   // web: go({ kind: 'dm', id })
             } catch { problem = error.localizedDescription }
             saving = false

@@ -82,8 +82,11 @@ enum MV {
         /// Motion (prototype mtGrow / mtItem): a 28 dot at its corner stretches into the pill on Atoll's open spring
         /// at twice the speed, solid throughout; the contents slide 6 pt from the corner, 35 ms in, 15 ms apart; it leaves at once.
         static let dot: CGFloat = 28, startScale: CGFloat = 0.92
-        static let response: Double = 0.21, damping: Double = 0.8
-        static let itemShift: CGFloat = 6, itemDelay: Double = 0.035, itemStep: Double = 0.015, itemTime: Double = 0.13
+        /// The grow: a strong ease-out (fast start, long soft landing), 160 ms, as a popover's (a spring this small read
+        /// as linear and slow). Contents slide in on the same curve.
+        static let grow = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.16)
+        static let damping: Double = 0.8
+        static let itemShift: CGFloat = 4, itemDelay: Double = 0.02, itemStep: Double = 0.012, itemTime: Double = 0.14
         static let exitTime: Double = 0.12
         static let press: CGFloat = 0.86, pressBack: Double = 0.26, copied: Double = 1.2
         /// How far under a hovered message the pointer can go and keep it (to reach the pill).
@@ -293,6 +296,8 @@ enum MV {
 
     // MARK: Chat (spec 9)
     enum Chat {
+        /// The space under the last message.
+        static let tail: CGFloat = 16
         static let bubbleLead: CGFloat = 96       // your bubble never starts closer than this to the left
         static let bubbleX: CGFloat = 16, bubbleY: CGFloat = 10, bubbleRadius: CGFloat = 22   // a one-line bubble is a full pill
         static let readWidth: CGFloat = 640       // the agent's words

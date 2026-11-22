@@ -182,8 +182,8 @@ struct ChatTranscript: View, Equatable {
                             // hang down over the next row and are never under its bubble. Fixed, so a hover redraws nothing.
                             .zIndex(Double(rows.count - i))
                     }
-                    // The space under the last message (MAVIS: room for its tools, which hang under it).
-                    Color.clear.frame(height: MV.on ? MV.MessageTools.height + MV.MessageTools.below : 16)
+                    // The space under the last message (its tools have room in their own row).
+                    Color.clear.frame(height: MV.Chat.tail)
                 }
                 // MAVIS: the conversation keeps a reading column, centred; the scroller stays full width.
                 .frame(maxWidth: MV.on ? MV.Chat.column : .infinity)
@@ -744,7 +744,10 @@ struct ChatRowView: View, Equatable {
                         .opacity(queued ? 0.6 : 1)
                     }
                     // MAVIS: no Fork / Go back buttons popping over your messages (the prototype has none).
-                    .padding(.vertical, MV.Space.sm)
+                    // Underneath, room for its tools (they hang 18 under the bubble): inside its own row, never over the
+                    // next message, so the pointer can always reach them.
+                    .padding(.top, MV.Space.sm)
+                    .padding(.bottom, MV.MessageTools.height - MV.MessageTools.overlap + MV.Space.sm)
                     }
                 } else {
                 RowFrame(face: AnyView(Circle().fill(C.v4).frame(width: 40, height: 40).overlay(Icon("person", 20).foregroundStyle(C.i10))),
@@ -764,18 +767,21 @@ struct ChatRowView: View, Equatable {
             case .agent(let turn):
                 if MV.on {
                     // MAVIS: the agent's words as plain text, no face or name, in a reading width.
+                    let hasTools = !turn.running && !turn.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     TurnSlot(agentId: agent?.id ?? turn.by ?? "", turn: turn)
                         .frame(maxWidth: MV.Chat.readWidth, alignment: .leading)
                         // Hovered: the row lights barely and its tools hang under the words, at the left.
-                        .background(MVRowLight(lit: RowLights.shared.lit(row.id)))
+                        // Only with its tools (words you can copy): the light is their ground, so an "Interrupted"
+                        // with no answer gets neither.
+                        .background { if hasTools { MVRowLight(lit: RowLights.shared.lit(row.id)) } }
                         .overlay(alignment: .bottomLeading) {
-                            // Only for words you can copy (an "Interrupted" with no answer has none).
-                            if !turn.running, !turn.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            if hasTools {
                                 MVToolsSlot(rowId: row.id, mine: false, time: turn.at, agentId: agent?.id ?? turn.by ?? "", messageId: turn.id, words: turn.text)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, MV.Space.sm).padding(.bottom, MV.Space.inset)
+                        // With tools, room for them under the words (inside its own row, never over the next message).
+                        .padding(.top, MV.Space.sm).padding(.bottom, hasTools ? MV.MessageTools.height + MV.MessageTools.below : MV.Space.inset)
                 } else {
                 // An agent that was deleted since keeps its words, under a plain grey face.
                 RowFrame(face: agent.map { AnyView(Avatar(agent: $0, size: 40, status: false)) } ?? AnyView(RoundedRectangle(cornerRadius: Avatar.radius(40), style: .continuous).fill(C.v4).frame(width: 40, height: 40)),
