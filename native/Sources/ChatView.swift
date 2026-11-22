@@ -411,7 +411,7 @@ final class Follower: ObservableObject {
         clip.postsBoundsChangedNotifications = true
         clip.postsFrameChangedNotifications = true
         watching = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { [weak self] _ in
-            MainActor.assumeIsolated { if self?.moving == false { self?.restrain() }; self?.wake?(); self?.hover(); if ScrollMeter.on { ScrollMeter.shared.moved(view) } }
+            MainActor.assumeIsolated { if self?.moving == false { self?.restrain() }; self?.wake?(); self?.scrolled(); if ScrollMeter.on { ScrollMeter.shared.moved(view) } }
         }
         // The content's height changes in the same layout pass as a new width (the words rewrap): pinned to the end
         // right there, before anything is drawn. Heard only from the clip's bounds, the first frame of a panel opening
@@ -446,7 +446,23 @@ final class Follower: ObservableObject {
     func frame(of id: String) -> CGRect? { rowFrames[id] }
     /// The chat's one hover tracker: the row under the pointer (by the rows' known places), lit; checked on every mouse
     /// move and every scroll (rows pass under a still pointer).
+    /// While the chat scrolls, no hover work at all (rows passing under a still pointer lit one after another, each a
+    /// SwiftUI update: 6% of the main thread in a 30 s scroll): the lit row goes out at once, and the row under the
+    /// pointer lights once the chat has stopped.
+    private var scrollingUntil: CFTimeInterval = 0
+    @MainActor func scrolled() {
+        let wasStill = CACurrentMediaTime() >= scrollingUntil
+        scrollingUntil = CACurrentMediaTime() + MV.Motion.hoverAfterScroll
+        if let c = RowLights.shared.current, rowFrames[c] != nil { RowLights.shared.light(nil) }
+        guard wasStill else { return }
+        func check() {
+            let left = scrollingUntil - CACurrentMediaTime()
+            if left > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + left) { MainActor.assumeIsolated { check() } } } else { hover() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + MV.Motion.hoverAfterScroll) { MainActor.assumeIsolated { check() } }
+    }
     @MainActor func hover() {
+        if CACurrentMediaTime() < scrollingUntil { return }
         let lights = RowLights.shared
         // Only ever puts out a row of its own: another chat in the window (side chat, a kept one) never clears this one's.
         let mine = { (id: String?) in id.map { self.rowFrames[$0] != nil } ?? false }

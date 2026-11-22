@@ -349,6 +349,9 @@ enum MV {
 
     // MARK: Motion (spec 12, Material 3). Hover and press are instant: no animation.
     enum Motion {
+        /// How long a chat's "takes keyboard focus" answer is kept (ChatHostingView), and how long after the last
+        /// scroll step the row under the pointer is lit again (no hover work while a chat scrolls).
+        static let focusCache: Double = 0.4, hoverAfterScroll: Double = 0.12
         static let open = Animation.timingCurve(0.05, 0.7, 0.1, 1, duration: 0.3)    // panes and panels opening
         static let close = Animation.timingCurve(0.3, 0, 0.8, 0.15, duration: 0.2)  // and closing
         static let standard = Animation.timingCurve(0.2, 0, 0, 1, duration: 0.25)

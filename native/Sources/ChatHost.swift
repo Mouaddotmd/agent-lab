@@ -12,7 +12,21 @@ import SwiftUI
 import AppKit
 
 @MainActor
-final class ChatViews {
+/// A kept chat's hosting view. AppKit asks every view in the window whether it takes keyboard focus each time it works
+/// out where the window can be dragged from (on every frame while a chat scrolls), and SwiftUI answers by walking the
+/// chat's whole view tree: 21% of the main thread in a 30 s scroll (22 Nov sample). The answer doesn't change while you
+/// scroll, so it's worked out at most a few times a second.
+final class ChatHostingView: NSHostingView<AnyView> {
+    private var accepts = false
+    private var askedAt: CFTimeInterval = -1
+    override var acceptsFirstResponder: Bool {
+        let now = CACurrentMediaTime()
+        if now - askedAt > MV.Motion.focusCache { accepts = super.acceptsFirstResponder; askedAt = now }
+        return accepts
+    }
+}
+
+@MainActor final class ChatViews {
     static let shared = ChatViews()
     /// How many chats stay built. Each costs only its visible rows (the transcript is lazy) and, while hidden, nothing
     /// on a window resize (a hidden chat doesn't follow the pane's size until it's shown again).
@@ -32,7 +46,7 @@ final class ChatViews {
             if !k.same(k.token, token) { k.view.rootView = make(); k.token = token }
             return k.view
         }
-        let v = NSHostingView(rootView: make())
+        let v = ChatHostingView(rootView: make())
         // A kept chat is its own AppKit view: it would take the window's title-bar inset as safe area and push its
         // header down (a channel's head sat ~20 pt low). Surfaces place themselves; no inset.
         v.safeAreaRegions = []
