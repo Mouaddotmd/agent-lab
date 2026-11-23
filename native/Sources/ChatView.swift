@@ -429,7 +429,7 @@ final class Follower: ObservableObject {
         events = nil
         if let view {
             view.window?.acceptsMouseMovedEvents = true
-            events = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown, .mouseMoved, .mouseExited]) { [weak self, weak view] e in
+            events = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .mouseMoved, .mouseExited]) { [weak self, weak view] e in
                 guard let self, let view, e.window === view.window, view.window != nil else { return e }
                 // A chat kept in the pool but not on screen hears nothing (each kept chat used to answer every event).
                 if MainActor.assumeIsolated({ view.isHiddenOrHasHiddenAncestor || view.inAwayChat }) { return e }

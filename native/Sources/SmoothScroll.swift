@@ -6,6 +6,7 @@
 //   site:   target += deltaY (Chrome on a Mac: 40 px per wheel line); loop: current += (target - current) * 0.085,
 //           done when |target - current| < 0.4; a scroll from anything else resets target = current = scrollY.
 import AppKit
+import IOKit.hid
 import QuartzCore
 
 @MainActor final class SmoothScroll: NSObject {
@@ -22,10 +23,37 @@ import QuartzCore
     private final class Run { weak var view: NSScrollView?; var target: CGFloat = 0; var current: CGFloat = 0; var link: CADisplayLink? }
     private var runs: [ObjectIdentifier: Run] = [:]
 
+    /// Watches the wheel only while a wheel mouse is connected. A scroll-wheel monitor anywhere in the app takes every
+    /// scroll view off AppKit's own scrolling thread (responsive scrolling), so a trackpad's swipe waited for the main
+    /// thread before the chat moved: the delay you felt against Claude (23 Nov). Checked again whenever the app comes
+    /// forward (a mouse plugged in meanwhile).
     func start() {
-        guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { e in
-            MainActor.assumeIsolated { SmoothScroll.shared.wheel(e) ? nil : e }
+        check()
+        if activeObserver == nil {
+            activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { SmoothScroll.shared.check() }
+            }
+        }
+    }
+    private var activeObserver: NSObjectProtocol?
+    private func check() {
+        let wanted = Self.wheelMouseConnected()
+        if wanted, monitor == nil {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { e in
+                MainActor.assumeIsolated { SmoothScroll.shared.wheel(e) ? nil : e }
+            }
+        } else if !wanted, let m = monitor {
+            NSEvent.removeMonitor(m); monitor = nil
+        }
+    }
+    /// A pointing device that isn't a trackpad or a Magic Mouse (those scroll precisely and are never smoothed).
+    nonisolated static func wheelMouseConnected() -> Bool {
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerSetDeviceMatching(manager, [kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop, kIOHIDDeviceUsageKey: kHIDUsage_GD_Mouse] as CFDictionary)
+        guard let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return false }
+        return devices.contains { d in
+            let name = (IOHIDDeviceGetProperty(d, kIOHIDProductKey as CFString) as? String ?? "").lowercased()
+            return !name.contains("trackpad") && !name.contains("magic mouse")
         }
     }
 

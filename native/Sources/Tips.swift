@@ -187,7 +187,7 @@ private struct TipAnchor: NSViewRepresentable {
     /// A click, a scroll or a key puts the label away (you've acted; it would be in the way).
     private func installMonitor() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .keyDown]) { [weak self] e in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]) { [weak self] e in
             guard let self else { return e }
             self.pending?.cancel(); self.pending = nil
             if let c = self.current { self.silenced = c; self.hide() }

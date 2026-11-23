@@ -182,8 +182,9 @@ struct MarkdownText: View {
 struct MDTable: View {
     let header: [String]; let rows: [[String]]
     var body: some View {
-        // A wide table scrolls sideways in its card (renders draw it flat: ImageRenderer can't draw scroll views).
-        Group { if SnapshotMode.on { grid } else { ScrollView(.horizontal) { grid }.scrollIndicators(.never) } }
+        // Fits the column, its cells wrapping (as Claude's): a table that scrolled sideways caught every swipe that
+        // started over it, and the chat stopped under your fingers.
+        grid
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: R.ctl).fill(C.v2))
             .overlay(RoundedRectangle(cornerRadius: R.ctl).strokeBorder(C.edge, lineWidth: 1))

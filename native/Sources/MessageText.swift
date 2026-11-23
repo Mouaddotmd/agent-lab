@@ -214,8 +214,8 @@ struct ProseView: NSViewRepresentable {
             guard selectedRange().length > 0 else { return }
             super.setSelectedRanges([NSValue(range: NSRange(location: selectedRange().location, length: 0))], affinity: .downstream, stillSelecting: false)
         }
-        /// The wheel belongs to the transcript, never to a block of text.
-        override func scrollWheel(with event: NSEvent) { nextResponder?.scrollWheel(with: event) }
+        // No scrollWheel override: a view that overrides it takes the chat off AppKit's own scrolling thread (responsive
+        // scrolling) for every swipe that starts over it, and the wheel already goes to the transcript by itself.
         /// The link under the pointer: its underline turns full blue (as mouad.work's marked words do).
         private var lit: NSRange?
         private var area: NSTrackingArea?
