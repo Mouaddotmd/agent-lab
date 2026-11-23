@@ -13,7 +13,7 @@ enum Mode: String, CaseIterable, Identifiable {
         switch self {
         case .read: "Looks and answers, changes nothing"
         case .ask: "Asks before every change it makes"
-        case .auto: "Edits and runs commands for you"
+        case .auto: "Edits, runs commands, uses your apps"
         case .full: "Acts like you, with network access"
         }
     }

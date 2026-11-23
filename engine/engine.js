@@ -122,7 +122,7 @@ export function resultText(content, extra) {
 // risk). yes = goes ahead; ask = the approval card; no = refused. `look` = only commands that change nothing.
 //   read  Read only    Looks and answers, changes nothing
 //   ask   Ask first    Asks before every change it makes (the default)
-//   auto  Auto         Edits and runs commands for you (deleting, sending, sharing, the internet still ask)
+//   auto  Auto         Edits, runs commands and acts in the connected apps for you (deleting, sending, sharing, the internet still ask)
 //   full  Full access  Acts like you, with network access
 export const MODES = {
   read: { write: 'no', host: 'look', delete: 'no', send: 'no', share: 'no', net: 'ask' },
@@ -1040,6 +1040,8 @@ export class Engine {
       let rule = risk === 'question' ? 'ask' : MODES[target.permission || 'ask']?.[risk] || 'ask';
       // Looking in a connected app never asks; a sign-in is yours to finish, so starting one only asks nothing in a mode that may act.
       if (risk === 'app-read') rule = 'yes';
+      // Acting in a connected app goes ahead in Auto, as in Mavis. Other sending (commands, other tools) still asks.
+      if (risk === 'send' && apps.isApp(toolName) && target.permission === 'auto') rule = 'yes';
       if (risk === 'app-connect') rule = target.permission === 'read' ? 'no' : 'yes';
       if (rule === 'look') rule = toolName === 'Bash' && onlyLooks(input?.command) ? 'yes' : 'no';
       if (risk === 'write' && target.alwaysEdits) rule = 'yes';
