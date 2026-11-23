@@ -12,6 +12,7 @@ import readline from 'node:readline';
 import { newId, channelConv } from './store.js';
 import { follow as followBackground } from './terminal.js';
 import * as hands from './hands.js';
+import * as apps from './apps.js';
 
 const HOME = os.homedir();
 const SEARCH = [...(process.env.PATH || '').split(':'), `${HOME}/.local/bin`, '/usr/local/bin', '/opt/homebrew/bin', `${HOME}/.npm-global/bin`, `${HOME}/bin`];
@@ -47,6 +48,7 @@ const clip = (s, n = 90) => { const t = String(s ?? '').replace(/\s+/g, ' ').tri
 // One plain line for a tool call: what the agent is doing, in words.
 export function describeTool(name, input = {}) {
   if (String(name).startsWith(`mcp__${hands.SERVER}__`)) return hands.describe(name, input);
+  if (apps.isApp(name)) return apps.describe(name, input);
   switch (name) {
     case 'Bash': return { verb: 'Run', line: clip(input.command, 120), detail: input.command };
     case 'Edit': case 'MultiEdit': return { verb: 'Edit', line: base(input.file_path), detail: input.file_path };
@@ -57,6 +59,7 @@ export function describeTool(name, input = {}) {
     case 'WebFetch': return { verb: 'Open', line: clip(input.url, 80), detail: input.url };
     case 'WebSearch': return { verb: 'Search the web for', line: clip(input.query, 80) };
     case 'Task': case 'Agent': return { verb: 'Start a helper for', line: clip(input.description || input.prompt, 80) };
+    case 'ToolSearch': return { verb: 'Look up', line: 'tools' };
     case 'TodoWrite': return { verb: 'Update', line: 'its to-do list' };
     case 'AskUserQuestion': return { verb: 'Ask you', line: clip(input.questions?.[0]?.question || 'a question', 100) };
     default: return { verb: 'Use', line: name.replace(/^mcp__/, '').replace(/__/g, ' · ') };
@@ -152,6 +155,8 @@ export function riskOf(name, input = {}) {
   if (name === 'WebFetch' || name === 'WebSearch') return 'net';
   // The app's own panes: looking never asks; acting on a page or the shell is a step on this Mac, as a command is.
   if (name.startsWith(`mcp__${hands.SERVER}__`)) return 'host';
+  // A connected app: looking in it, connecting it, or changing something there (apps.js).
+  if (apps.isApp(name)) return { read: 'app-read', connect: 'app-connect', send: 'send' }[apps.riskOf(name, input)];
   if (name.startsWith('mcp__')) return 'send';
   return 'host';
 }
@@ -248,6 +253,7 @@ function stepName(tool) {
   if (t.startsWith(`mcp__${hands.SERVER}__browser`)) return 'the browser';
   if (t.startsWith(`mcp__${hands.SERVER}__mac`)) return 'a step in an app';
   if (t.startsWith(`mcp__${hands.SERVER}__terminal`)) return 'the terminal';
+  if (apps.isApp(t)) return 'your apps';
   const table = [['bash', 'a command'], ['powershell', 'a command'], ['edit', 'a change'], ['multiedit', 'a change'], ['write', 'a file'],
     ['notebook', 'a change'], ['read', 'a read'], ['glob', 'a search'], ['grep', 'a search'], ['websearch', 'a web search'],
     ['webfetch', 'a page'], ['task', 'a helper'], ['agent', 'a helper'], ['todo', 'the plan'], ['askuser', 'a question']];
@@ -321,9 +327,9 @@ export class Engine {
 
   pending() {
     return [...this.approvals.values()].map(({ resolve, signal, input, suggestions, ...a }) => ({
-      ...a, command: a.tool === 'Bash' ? String(input?.command || '') : null, canAlways: !!suggestions?.length,
+      ...a, command: a.tool === 'Bash' ? String(input?.command || '') : apps.isApp(a.tool) ? apps.approval(a.tool, input).command : null, canAlways: !!suggestions?.length,
       // What the step is for, in the agent's own words (Bash's description): the card's title.
-      about: typeof input?.description === 'string' && input.description.trim() ? input.description.trim().slice(0, 140) : null,
+      about: apps.isApp(a.tool) ? apps.approval(a.tool, input).about : typeof input?.description === 'string' && input.description.trim() ? input.description.trim().slice(0, 140) : null,
       ...(a.tool === 'AskUserQuestion' ? { questions: (input?.questions || []).map((q) => ({ question: q.question, header: q.header || '', multiple: !!q.multiSelect, options: (q.options || []).map((o) => ({ label: o.label, about: o.description || '' })) })) } : {}),
       ...(['Edit', 'MultiEdit', 'Write'].includes(a.tool) ? { diff: diffOf(a.tool, input) } : {}),
     }));
@@ -334,6 +340,7 @@ export class Engine {
   // it's working in. The app reads the hidden lines (native/Sources/ChatCore.swift); this is the only copy of the wording.
   appendFor(agent, ws = null) {
     const parts = [CHAT_RULES, hands.PROMPT];
+    if (agent.apps !== false && apps.configured()) parts.push(apps.PROMPT);
     if (agent.job?.trim()) parts.push(`Your job, set by the user: ${agent.job.trim()}`);
     if (agent.memory?.length) parts.push(`Your own notes, from every chat you've had:\n${agent.memory.map((m) => `- ${m.text}`).join('\n')}`);
     const decisions = this.store.state.memory.filter((d) => !d.workspace || d.workspace === ws?.id);
@@ -460,7 +467,7 @@ export class Engine {
     // are running long enough to show above the box.
     run.onHelper = (h) => { this.store.putHelper(conv, h); this.#emitHelper(run, h); };
     run.conv = conv;
-    this.#start(run, agent.operator, { cwd, sessionId: session, model: agent.model, permission: modeOf(agent.permission), alwaysEdits: !!agent.alwaysEdits, append: this.appendFor(agent, ws), work: isWork(sent.text), setup: !!agent.claudeSetup, images, rewindAt: by ? null : agent.rewindAt || null }, prompt);
+    this.#start(run, agent.operator, { cwd, sessionId: session, model: agent.model, permission: modeOf(agent.permission), alwaysEdits: !!agent.alwaysEdits, apps: agent.apps !== false, append: this.appendFor(agent, ws), work: isWork(sent.text), setup: !!agent.claudeSetup, images, rewindAt: by ? null : agent.rewindAt || null }, prompt);
     if (!by && agent.rewindAt) this.store.updateAgent(agentId, { rewindAt: null });
   }
 
@@ -616,7 +623,7 @@ export class Engine {
   /// forks the thread), only looking: it never adds to the chat or asks you anything. Runs quietly (no run events);
   /// `cb` hears its words (onDelta, onText), its steps (onTool, onToolDone) and its end (onEnd(outcome, sessionId)).
   side(agent, { key, sessionId, fork, rewindAt = null, prompt, images = [] }, cb) {
-    const run = { key, quiet: true, startedAt: Date.now(), activity: '', preview: '', abort: null, stopped: false, agentId: agent.id, conv: key };
+    const run = { key, quiet: true, operator: agent.operator, startedAt: Date.now(), activity: '', preview: '', abort: null, stopped: false, agentId: agent.id, conv: key };
     run.onDelta = cb.onDelta; run.onText = (t) => cb.onText(t); run.onTool = cb.onTool; run.onToolDone = cb.onToolDone;
     run.onSession = (sid) => { if (sid) run.sessionId = sid; };
     (this.sides ||= new Map()).set(key, run);
@@ -624,7 +631,7 @@ export class Engine {
     // apart. It doesn't carry on the main task unless asked to.
     const rule = "This is a side chat: the user is asking something on the side, without adding to the main conversation above. Answer in your own voice. Don't carry on the main task unless the user asks you to here.";
     const codex = agent.operator === 'codex';
-    const target = { cwd: agent.cwd || HOME, sessionId, fork: !!(sessionId && fork), rewindAt, model: agent.model, permission: modeOf(agent.permission), alwaysEdits: !!agent.alwaysEdits, side: true, work: true,
+    const target = { cwd: agent.cwd || HOME, sessionId, fork: !!(sessionId && fork), rewindAt, model: agent.model, permission: modeOf(agent.permission), alwaysEdits: !!agent.alwaysEdits, apps: agent.apps !== false, side: true, work: true,
       setup: !!agent.claudeSetup, images, append: codex ? '' : `${this.appendFor(agent)}\n\n${rule}` };
     const go = codex ? this.#codex(run, target, `${rule}\n\n${prompt}`) : this.#claude(run, target, prompt);
     return go.then((o) => o || {}, (err) => ({ error: run.stopped ? 'Stopped.' : readable(err?.message || String(err)) })).then((o) => {
@@ -845,6 +852,8 @@ export class Engine {
     };
     // Its hands on the app: the Browser pane, the Terminal's shell and the side panes (hands.js). Looking needs no ask.
     if (run.agentId) { options.mcpServers = { [hands.SERVER]: hands.server(handsId(run)) }; options.allowedTools = hands.allowed(); }
+    // Your connected apps, when this agent may use them and something is connected (or the message is about one).
+    if (target.apps !== false && apps.wanted(text)) { const list = await apps.tools(); if (list.length) options.mcpServers = { ...options.mcpServers, [apps.SERVER]: apps.server(list) }; }
     if (target.sessionId) options.resume = target.sessionId;
     if (target.sessionId && target.rewindAt) options.resumeSessionAt = target.rewindAt;
     // A side chat reads the chat as it is without adding to it: its own copy of the session.
@@ -1016,7 +1025,7 @@ export class Engine {
   async gateHands(agentId, toolName, input) {
     // The exact run that asked ("a1" its DM, "a1@<conv>" a channel): an agent can run in both at once.
     const full = String(agentId);
-    const run = [...this.runs.values()].find((r) => handsId(r) === full && r.operator === 'codex' && !r.ended);
+    const run = [...this.runs.values(), ...(this.sides?.values() || [])].find((r) => handsId(r) === full && r.operator === 'codex' && !r.ended);
     if (!run) return 'This agent is not working right now.';
     const answer = await this.#approval(run, toolName, input, null, [], run.target || {});
     return answer.behavior === 'allow' ? true : answer.message || 'Not allowed.';
@@ -1029,6 +1038,9 @@ export class Engine {
       const risk = toolName === 'AskUserQuestion' ? 'question' : riskOf(toolName, input);
       // The mode first (MODES), then what you already allowed for this request or for good.
       let rule = risk === 'question' ? 'ask' : MODES[target.permission || 'ask']?.[risk] || 'ask';
+      // Looking in a connected app never asks; a sign-in is yours to finish, so starting one only asks nothing in a mode that may act.
+      if (risk === 'app-read') rule = 'yes';
+      if (risk === 'app-connect') rule = target.permission === 'read' ? 'no' : 'yes';
       if (rule === 'look') rule = toolName === 'Bash' && onlyLooks(input?.command) ? 'yes' : 'no';
       if (risk === 'write' && target.alwaysEdits) rule = 'yes';
       if (rule === 'no') return resolve({ behavior: 'deny', message: 'This agent is in Read only mode: it can look and answer, but not change anything. Say what you found and what you would change.' });
@@ -1066,7 +1078,9 @@ export class Engine {
     if (!bin) return { error: 'Codex is not installed on this Mac.' };
     // Its hands on the app's panes come as an MCP server Codex starts (hands-stdio.js); its steps pass #approval here.
     run.target = target;
-    const child = spawn(bin, ['app-server', ...(run.agentId ? hands.codexConfig(handsId(run)) : [])], { cwd: fs.existsSync(target.cwd) ? target.cwd : HOME, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+    // Your connected apps, as Claude's; asked for first, so they're there when Codex lists its tools.
+    const withApps = run.agentId && target.apps !== false && apps.wanted(text) && (await apps.tools()).length > 0;
+    const child = spawn(bin, ['app-server', ...(run.agentId ? hands.codexConfig(handsId(run)) : []), ...(withApps ? apps.codexConfig(handsId(run), hands.socketPath) : [])], { cwd: fs.existsSync(target.cwd) ? target.cwd : HOME, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
     let err = '';
     child.stderr.on('data', (d) => { err = `${err}${d}`.slice(-4000); });
     let next = 0;
@@ -1142,7 +1156,7 @@ export class Engine {
         return { verb: 'Edit', line: diff.map((d) => base(d.path)).slice(0, 3).join(', ') || 'files', diff };
       }
       if (t === 'websearch') return { verb: 'Search the web for', line: clip(it.query || '', 80) };
-      if (t === 'mcptoolcall') return it.server === hands.SERVER ? hands.describe(it.tool, it.arguments || {}) : { verb: 'Use', line: `${it.server || ''} · ${it.tool || ''}` };
+      if (t === 'mcptoolcall') return it.server === hands.SERVER ? hands.describe(it.tool, it.arguments || {}) : it.server === apps.SERVER ? apps.describe(`mcp__${apps.SERVER}__${it.tool}`, it.arguments || {}) : { verb: 'Use', line: `${it.server || ''} · ${it.tool || ''}` };
       if (t === 'imageview') return { verb: 'Look at', line: base(it.path), detail: it.path };
       return null;
     };
@@ -1171,7 +1185,7 @@ export class Engine {
         else if (m.method === 'item/fileChange/requestApproval') {
           const d = changes.get(p.itemId);
           result = { decision: await ask('Edit', { file_path: d?.[0]?.path || p.grantRoot || 'files' }, p) };
-        } else if (m.method === 'mcpServer/elicitation/request' && p.serverName === hands.SERVER) {
+        } else if (m.method === 'mcpServer/elicitation/request' && [hands.SERVER, apps.SERVER].includes(p.serverName)) {
           // Codex asking to use the app's panes: the engine already applies the agent's mode to each step (gateHands).
           result = { action: 'accept', content: {} };
         } else { write({ id: m.id, error: { code: -32601, message: 'Not supported by Agent Lab' } }); return; }
@@ -1261,7 +1275,7 @@ export class Engine {
       let model = target.model;
       if (!model) { try { model = (await call('model/list', { includeHidden: false }))?.data?.[0]?.model || null; } catch {} }
       chosenModel = model;
-      const params = { cwd: target.cwd, sandbox, approvalPolicy, ...(model ? { model } : {}) };
+      const params = { cwd: target.cwd, sandbox, approvalPolicy, ...(model ? { model } : {}), ...(withApps ? { developerInstructions: `${apps.PROMPT} These tools are the MCP server named "${apps.SERVER}" (COMPOSIO_SEARCH_TOOLS, COMPOSIO_MANAGE_CONNECTIONS, COMPOSIO_MULTI_EXECUTE_TOOL and others). Your own plugins and ChatGPT connections are something else: never use or mention them for this.` } : {}) };
       // A side chat works on its own copy of the thread (thread/fork), so the chat itself never changes.
       const opened = target.sessionId ? await call(target.fork ? 'thread/fork' : 'thread/resume', { ...params, threadId: target.sessionId }) : await call('thread/start', params);
       thread = opened.thread.id;

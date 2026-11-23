@@ -800,6 +800,7 @@ struct ChatRowView: View, Equatable {
                     if !images.isEmpty || !sent.files.isEmpty {
                         MVSentImages(paths: images + sent.files).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, MV.Space.sm)
                     }
+                    if !sent.apps.isEmpty { MVSentApps(slugs: sent.apps).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, MV.Space.sm) }
                     if !words.isEmpty || queued || steered {
                     HStack(spacing: 0) {
                         Spacer(minLength: MV.Chat.bubbleLead)
@@ -1485,8 +1486,12 @@ struct ChatComposer: View {
     /// Words put back for this box (going back to one of your messages, or a fork opening with it): into an empty box
     /// only (what you've typed since wins).
     func takeRestore() {
-        guard let back = s.restore[agent.id], model.isEmpty else { return }
-        model.set(back.text, caretAtEnd: true); model.images = back.images; model.save(); model.takeFocus()
+        guard let back = s.restore[agent.id] else { return }
+        // Apps picked elsewhere (the Apps page) join whatever you were writing.
+        let (words, named) = SentApps.split(back.text)
+        for slug in (back.apps ?? []) + named where !model.picks.contains(slug) { model.picks.append(slug) }
+        guard model.isEmpty else { if back.apps != nil { model.save(); model.takeFocus(); s.restore[agent.id] = nil }; return }
+        model.set(words, caretAtEnd: true); model.images = back.images; model.save(); model.takeFocus()
         s.restore[agent.id] = nil
     }
     /// Ties the box to this agent: its draft, its commands, what sending and Esc do.
@@ -1674,6 +1679,7 @@ struct MVChatBox: View {
             if !model.images.isEmpty || !model.files.isEmpty {
                 MVAttachments(model: model).padding(.bottom, MV.Space.sm)       // 6 from the box's edges (its padding), 6 above the row
             }
+            if !model.picks.isEmpty { AppPicks(model: model) }
             HStack(alignment: .bottom, spacing: MV.Space.rowGap) {
                 MVRoundButton(icon: "mvClip", label: "Add files, commands, plugins") { model.toggleMenu() }
                 VStack(alignment: .leading, spacing: MV.Space.sm) {

@@ -343,6 +343,25 @@ enum MV {
         static let top: CGFloat = 16, sides: CGFloat = 16
     }
 
+    // MARK: Apps (the marketplace page: Home's cards and greeting type, the logos its only colour)
+    enum Apps {
+        static let column: CGFloat = 960, sides: CGFloat = 32, head: CGFloat = 20, foot: CGFloat = 64
+        static let search = CGSize(width: 280, height: 36)
+        static let hero: CGFloat = 232, heroPad: CGFloat = 32, heroText: CGFloat = 400
+        static let wallTile: CGFloat = 64, wallGap: CGFloat = 12, wallRadius: CGFloat = 18, wallShift: CGFloat = 38, wallRows = 4, wallColumns = 6
+        static let wallLogo: CGFloat = 34
+        static func drop(_ column: Int) -> CGFloat { column % 2 == 0 ? -wallShift / 2 : wallShift / 2 }
+        static let cardMin: CGFloat = 260
+        static let tile: CGFloat = 44, logo: CGFloat = 26
+        static let set: CGFloat = 36, setLogo: CGFloat = 22
+        static let detail: CGFloat = 480, detailTile: CGFloat = 72, detailRadius: CGFloat = 20, detailLogo: CGFloat = 42
+        static let rowLogo: CGFloat = 18, pickLogo: CGFloat = 16
+        static let solid: CGFloat = 0.88          // a filled square reads larger than a mark: drawn smaller, they weigh the same
+        static let paperPad: CGFloat = 0.14, corner: CGFloat = 0.26
+        static let paper = Color(0xffffff)        // under a logo that mixes ink with white (Notion)
+        static let menuLogos = 8                  // apps listed before the + menu's list scrolls
+    }
+
     // MARK: Menus (spec 11): today's menus, on system values. Same items and behaviour.
     enum Menu {
         static let radius: CGFloat = 14

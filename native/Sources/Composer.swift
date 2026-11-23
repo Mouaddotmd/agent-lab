@@ -65,13 +65,14 @@ struct Suggestion: Identifiable, Equatable {
 
 /// The + menu's rows.
 enum PlusItem: Int, CaseIterable {
-    case files, folder, commands, side, plugins
+    case files, folder, commands, side, apps, plugins
     var title: String {
         switch self {
         case .files: "Add files or photos"
         case .folder: "Add folder"
         case .commands: "Slash commands"
         case .side: "Side chat"
+        case .apps: "Apps"
         case .plugins: "Plugins"
         }
     }
@@ -81,6 +82,7 @@ enum PlusItem: Int, CaseIterable {
         case .folder: "folder"
         case .commands: "chevron.left.forwardslash.chevron.right"
         case .side: "bubble.left.and.bubble.right"
+        case .apps: "square.grid.2x2"
         case .plugins: "powerplug"
         }
     }
@@ -108,6 +110,10 @@ enum PlusItem: Int, CaseIterable {
     var boxRect: CGRect = .zero
     @Published var images: [String] = []
     @Published var files: [String] = []
+    /// Connected apps picked for the next message (their slugs).
+    @Published var picks: [String] = []
+    /// Apps open inside the menu: which row is lit (0 the switch, then your apps, then Browse).
+    @Published var appsRow: Int?
     @Published var suggestions: [Suggestion] = []
     @Published var highlighted = 0
     @Published var height: CGFloat = 24
@@ -154,6 +160,7 @@ enum PlusItem: Int, CaseIterable {
         set(draft.text, caretAtEnd: true)
         images = draft.images.filter { FileManager.default.fileExists(atPath: $0) }
         files = draft.files
+        picks = draft.apps ?? []
         if let id = agentID { store.loadCatalog(id) }
         // The snapshot tool's way in (tools/snapshot.swift): SNAP_COMPOSER=menu|plugins|slash|mention.
         if SnapshotMode.on, let state = ProcessInfo.processInfo.environment["SNAP_COMPOSER"] {
@@ -188,7 +195,7 @@ enum PlusItem: Int, CaseIterable {
 
     func save() {
         guard target.key != "dm:" else { return }
-        DraftStore.shared.set(target.key, DraftStore.Draft(text: text, images: images, files: files))
+        DraftStore.shared.set(target.key, DraftStore.Draft(text: text, images: images, files: files, apps: picks.isEmpty ? nil : picks))
     }
 
     func set(_ new: String, caretAtEnd: Bool) {
@@ -240,7 +247,7 @@ enum PlusItem: Int, CaseIterable {
             return
         }
         DraftStore.shared.remember(words)
-        send?(words, images, files)
+        send?(SentApps.append(words, picks), images, files)
         clear()
     }
 
@@ -249,6 +256,7 @@ enum PlusItem: Int, CaseIterable {
     private func clear() {
         images = []
         files = []
+        picks = []
         browsing = nil
         hint = nil
         set("", caretAtEnd: true)
@@ -326,12 +334,23 @@ enum PlusItem: Int, CaseIterable {
         if menu != nil { closeMenu() } else { suggestions = []; tokenRange = nil; menu = 0; submenu = nil }
         takeFocus()
     }
-    func closeMenu() { menu = nil; submenu = nil }
+    func closeMenu() { menu = nil; submenu = nil; appsRow = nil }
+    func togglePick(_ slug: String) {
+        if let i = picks.firstIndex(of: slug) { picks.remove(at: i) } else { picks.append(slug) }
+        save()
+        takeFocus()
+    }
+    func openApps() { menu = PlusItem.apps.rawValue; appsRow = 0; Task { await Apps.shared.refresh() } }
 
     /// The rows the menu has here: a channel has no one agent's commands or plugins.
-    var menuItems: [PlusItem] { who == nil ? [.files, .folder] : PlusItem.allCases }
+    var menuItems: [PlusItem] { who == nil ? [.files, .folder, .apps] : PlusItem.allCases }
 
     private func moveMenu(_ delta: Int) {
+        if let at = appsRow {
+            let rows = Apps.shared.connected.count + 2
+            appsRow = (at + delta + rows) % rows
+            return
+        }
         if let sub = submenu {
             let count = store?.plugins[who ?? ""]?.count ?? 0
             let first = showsSetup ? -1 : 0
@@ -346,12 +365,13 @@ enum PlusItem: Int, CaseIterable {
     func menuRight() -> Bool {
         guard let at = menu else { return false }
         if PlusItem(rawValue: at) == .plugins, submenu == nil { openPlugins() }
+        if PlusItem(rawValue: at) == .apps, appsRow == nil { openApps() }
         return true
     }
 
     func menuLeft() -> Bool {
         guard menu != nil else { return false }
-        if submenu != nil { submenu = nil } else { closeMenu() }
+        if appsRow != nil { appsRow = nil } else if submenu != nil { submenu = nil } else { closeMenu() }
         return true
     }
 
@@ -365,6 +385,13 @@ enum PlusItem: Int, CaseIterable {
     }
 
     func activateMenu() {
+        if let at = appsRow {
+            let mine = Apps.shared.connected
+            if at == 0 { toggleApps() }
+            else if mine.indices.contains(at - 1) { togglePick(mine[at - 1]); closeMenu() }
+            else { closeMenu(); store?.go(.apps) }
+            return
+        }
         if let sub = submenu {
             guard let agent = speaker else { return }
             if sub == -1 { store?.setClaudeSetup(agent, on: agent.claudeSetup != true); return }
@@ -376,6 +403,11 @@ enum PlusItem: Int, CaseIterable {
         choose(item)
     }
 
+    /// Whether this agent may use your connected apps.
+    func toggleApps() {
+        guard let agent = speaker else { return }
+        Task { do { try await store?.updateAgent(agent.id, ["apps": agent.apps == false]) } catch { store?.toast = error.localizedDescription } }
+    }
     func choose(_ item: PlusItem) {
         switch item {
         case .files: closeMenu(); pick(folders: false)
@@ -388,6 +420,7 @@ enum PlusItem: Int, CaseIterable {
         case .side:
             closeMenu()
             if let agent = speaker { store?.openSideChat(agent, in: sidePanel?()) }
+        case .apps: openApps()
         case .plugins: openPlugins()
         }
     }
@@ -561,8 +594,8 @@ extension Array {
 /// What you were writing in each conversation, kept until sent (and across restarts), and what you've sent, for ↑.
 @MainActor final class DraftStore {
     static let shared = DraftStore()
-    struct Draft: Codable, Equatable { var text = ""; var images: [String] = []; var files: [String] = []
-        var isEmpty: Bool { text.isEmpty && images.isEmpty && files.isEmpty } }
+    struct Draft: Codable, Equatable { var text = ""; var images: [String] = []; var files: [String] = []; var apps: [String]? = nil
+        var isEmpty: Bool { text.isEmpty && images.isEmpty && files.isEmpty && (apps ?? []).isEmpty } }
     private var drafts: [String: Draft] = [:]
     private(set) var history: [String] = []
     private var timer: Timer?
@@ -925,9 +958,10 @@ struct PlusMenu: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if model.submenu == nil {
+            if model.appsRow != nil { AppsMenu(model: model) }
+            else if model.submenu == nil {
                 ForEach(model.menuItems, id: \.rawValue) { item in
-                    row(symbol: item.symbol, title: item.title, keys: item.keys, lit: model.menu == item.rawValue, more: item == .plugins) { model.choose(item) }
+                    row(symbol: item.symbol, title: item.title, keys: item.keys, lit: model.menu == item.rawValue, more: item == .plugins || item == .apps) { model.choose(item) }
                         .onContinuousHover { if case .active = $0 { model.menu = item.rawValue } }
                 }
             } else {
@@ -1137,12 +1171,12 @@ struct ComposerOverlays: ViewModifier {
 /// each an existing file. The bubble shows the words; the files show as tiles above it.
 enum SentFiles {
     /// split, once per message text (it checks the disk for every file line).
-    @MainActor private static var memo: [String: (words: String, files: [String])] = [:]
-    @MainActor static func cached(_ text: String) -> (words: String, files: [String]) {
+    @MainActor private static var memo: [String: (words: String, files: [String], apps: [String])] = [:]
+    @MainActor static func cached(_ text: String) -> (words: String, files: [String], apps: [String]) {
         if let m = memo[text] { return m }
         let r = split(text); if memo.count > 500 { memo.removeAll() }; memo[text] = r; return r
     }
-    static func split(_ text: String) -> (words: String, files: [String]) {
+    static func split(_ text: String) -> (words: String, files: [String], apps: [String]) {
         var lines = text.components(separatedBy: "\n")
         var files: [String] = []
         while let last = lines.last {
@@ -1155,6 +1189,8 @@ enum SentFiles {
             guard parts.allSatisfy({ FileManager.default.fileExists(atPath: $0) }) else { break }
             files.insert(contentsOf: parts, at: 0); lines.removeLast()
         }
-        return (lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines), files)
+        // The connected apps it went with (SentApps): their notes come out of the words too.
+        let (words, apps) = SentApps.split(lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))
+        return (words, files, apps)
     }
 }

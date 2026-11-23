@@ -108,6 +108,7 @@ private struct SideChatView: View {
             let sent = SentFiles.cached(m.text)
             let files = (m.images ?? []) + sent.files
             if !files.isEmpty { MVSentImages(paths: files).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, MV.Space.sm) }
+            if !sent.apps.isEmpty { MVSentApps(slugs: sent.apps).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, MV.Space.sm) }
             if !sent.words.isEmpty { MVBubble(text: sent.words) }
         } else {
             VStack(alignment: .leading, spacing: MV.Space.labelGap) {

@@ -124,6 +124,7 @@ struct Agent: Codable, Identifiable, Equatable {
     /// The channels' own assistant (engine): never listed as one of your agents.
     var hidden: Bool? = nil
     var alwaysEdits: Bool?      // "Always allow file changes", whatever the mode (engine: answer "always")
+    var apps: Bool?             // may use your connected apps (nil and true: yes)
     var claudeSetup: Bool?      // "Use my Claude Code setup": your skills, plugins and CLAUDE.md (engine: settingSources)
     var cwd: String?
     var workspace: String?

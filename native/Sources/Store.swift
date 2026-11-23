@@ -4,11 +4,11 @@ import SwiftUI
 import AppKit
 
 enum Kind: String, CaseIterable {
-    case agents, discover, reviews, messages, team, memory, usage, connections, profile
+    case agents, discover, reviews, messages, team, memory, usage, connections, profile, apps
     /// The pages the sidebar, the rail and the Go menu offer. Review, Team and Playbook are parked until they're ready
     /// for the launch: their pages stay in the code, nothing leads to them.
     /// The rail's pages. Discover is hidden for now (its page stays in the code, reachable from nowhere).
-    static let nav: [Kind] = [.agents, .messages]
+    static let nav: [Kind] = [.agents, .messages, .apps]
     /// Title-bar icon and name (web: viewInfo / pageHead).
     var info: (icon: String, title: String) {
         switch self {
@@ -22,6 +22,8 @@ enum Kind: String, CaseIterable {
         case .usage: return ("chart", "Usage")
         case .connections: return ("plug", "Plugins")
         case .profile: return ("person", "Profile")
+        // The services your agents can work in (Gmail, YouTube, Slack…): AppsPage.swift.
+        case .apps: return ("mvApps", "Apps")
         }
     }
 }
@@ -100,6 +102,7 @@ final class Store: ObservableObject {
         listenForMouseButtons()
         // Helpers, running commands, side chats, context, find and jump (ConvoModel.swift) hear the engine from here on.
         ConvoHub.shared.attach(self)
+        Apps.shared.store = self
         // The agents' hands on their side panes (browser, terminal, files) answer the engine from here on.
         AgentHands.start(self)
         // A mouse wheel glides as on mouad.work, everywhere that scrolls up and down (SmoothScroll.swift).
@@ -135,6 +138,7 @@ final class Store: ObservableObject {
                 // A block of words was saved: its draft holds its place until the saved copy is loaded (17 Nov).
                 // `agentId` is the conversation; `key` the run that wrote it (a DM's run key is "agent:" + its id).
                 if let id = ev["agentId"] as? String { self.settle((ev["key"] as? String) ?? "agent:\(id)"); Task { await self.loadMessages(id) } }
+            case "apps": Task { await Apps.shared.refresh() }
             case "approvals": Task { self.approvals = (try? await self.engine.call("approvals", as: [Approval].self)) ?? self.approvals }
             default: break
             }
@@ -143,7 +147,7 @@ final class Store: ObservableObject {
         }
         engine.onExit = { [weak self] why in self?.engineProblem = why }
         do { try engine.start(); engineProblem = nil } catch { engineProblem = error.localizedDescription; return }
-        Task { await load() }
+        Task { await load(); await Apps.shared.refresh() }
     }
     func load() async {
         let asked = Date()

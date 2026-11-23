@@ -182,7 +182,7 @@ struct HomePage: View {
     // Getting started: title and line, then the four actions as a 2×2 grid (web: .sx-ideas).
     var ideas: some View {
         let rows: [(String, String, () -> Void)] = [
-            ("plug", "Connect GitHub", { s.go(.connections) }), ("chat", "Message one of your agents", { s.go(.messages) }),
+            ("plug", "Connect GitHub", { s.go(.apps) }), ("chat", "Message one of your agents", { s.go(.messages) }),
             ("folder", "Create a workspace for a project", { s.createWorkspaceOpen = true }),
         ]
         return VStack(alignment: .leading, spacing: 12) {

@@ -343,6 +343,7 @@ enum StepWords {
         if looked > 0 { parts.append(looked == 1 && n["read"] == 1 ? "Looked at a file" : "Looked through your files") }
         if (n["web"] ?? 0) > 0 { parts.append("Looked on the web") }
         if let c = n["command"] { parts.append(c == 1 ? "Ran a quick check" : "Ran a few checks") }
+        if (n["app"] ?? 0) > 0 { parts.append("Worked in your apps") }
         if (n["helper"] ?? 0) > 0 { parts.append("Asked a helper") }
         if parts.isEmpty { parts.append("Worked on it") }
         return parts.prefix(2).enumerated().map { i, t in i == 0 ? t : t.prefix(1).lowercased() + t.dropFirst() }.joined(separator: " and ")
@@ -355,6 +356,7 @@ enum StepWords {
         case "Run": return "command"
         case "Open", "Search the web for": return "web"
         case "Start a helper for": return "helper"
+        case "Use", "Prepare": return "app"
         default: return "other"
         }
     }
@@ -365,14 +367,14 @@ enum StepWords {
     /// A step's verb done ("Ran", "Read") and under way ("Running"), as Mavis's step lines say it.
     static func past(_ verb: String) -> String {
         ["Run": "Ran", "Edit": "Edited", "Write": "Created", "Read": "Read", "Search": "Searched for", "Open": "Opened",
-         "Search the web for": "Searched the web for", "Start a helper for": "Asked a helper to", "Update": "Updated", "Use": "Used",
+         "Search the web for": "Searched the web for", "Start a helper for": "Asked a helper to", "Update": "Updated", "Use": "Used", "Prepare": "Prepared", "Look up": "Looked up",
          "Look at": "Looked at", "Click": "Clicked", "Type": "Typed", "Choose": "Chose", "Press": "Pressed", "Scroll": "Scrolled",
          "Point at": "Pointed at", "Wait for": "Waited for", "Close": "Closed", "Show": "Showed", "Go": "Went", "Reload": "Reloaded",
          "Find": "Found", "Ask you": "Asked you", "Thought": "Thought", "Check": "Checked"][verb] ?? verb
     }
     static func ing(_ verb: String) -> String {
         ["Run": "Running", "Edit": "Editing", "Write": "Writing", "Read": "Reading", "Search": "Searching for", "Open": "Opening",
-         "Search the web for": "Searching the web for", "Start a helper for": "Asking a helper to", "Update": "Updating", "Use": "Using",
+         "Search the web for": "Searching the web for", "Start a helper for": "Asking a helper to", "Update": "Updating", "Use": "Using", "Prepare": "Preparing", "Look up": "Looking up",
          "Look at": "Looking at", "Click": "Clicking", "Type": "Typing", "Choose": "Choosing", "Press": "Pressing", "Scroll": "Scrolling",
          "Point at": "Pointing at", "Wait for": "Waiting for", "Close": "Closing", "Show": "Showing", "Go": "Going", "Reload": "Reloading",
          "Find": "Finding", "Ask you": "Asking you", "Thought": "Thinking", "Check": "Checking"][verb] ?? verb

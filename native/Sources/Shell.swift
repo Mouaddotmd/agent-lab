@@ -352,7 +352,7 @@ struct RailSidebar: View {
             ForEach(nav, id: \.self) { k in
                 RailTile(selected: s.view == k && s.openWorkspace == nil, label: k.info.title) { s.go(k) } content: { _ in
                     // MAVIS draws the prototype's Hugeicons (home, compass, chat) at 22.
-                    Icon(MV.on ? (["agents": "mvHome", "discover": "mvCompass", "messages": "mvChat"][k.rawValue] ?? k.info.icon) : k.info.icon, MV.Size.iconLarge)
+                    Icon(MV.on ? (["agents": "mvHome", "discover": "mvCompass", "messages": "mvChat", "apps": "mvApps"][k.rawValue] ?? k.info.icon) : k.info.icon, MV.Size.iconLarge)
                 }
             }
             if MV.on {

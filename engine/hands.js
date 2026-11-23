@@ -165,7 +165,7 @@ export { specs };
 // Codex runs its tools in a process of its own: it starts hands-stdio.js, which hands each call to the engine over
 // this socket, one JSON line each way. `gate` applies the agent's mode first (approval, as a command's).
 export let socketPath = null;
-export function listen(path, gate) {
+export function listen(path, gate, apps) {
   socketPath = path;
   return import('node:net').then(({ default: net }) => import('node:fs').then(({ default: fs }) => {
     try { fs.unlinkSync(path); } catch {}
@@ -178,9 +178,10 @@ export function listen(path, gate) {
         while ((i = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, i); buf = buf.slice(i + 1);
           let m; try { m = JSON.parse(line); } catch { continue; }
-          const t = specs().find((x) => x.name === m.tool);
+          const t = m.apps ? null : specs().find((x) => x.name === m.tool);
           let out;
-          if (!t) out = fail(`No tool ${m.tool}.`);
+          if (m.apps) out = await apps(m, gate);
+          else if (!t) out = fail(`No tool ${m.tool}.`);
           else {
             const ok = looks(t.name) ? true : await gate(m.agentId, `mcp__${SERVER}__${t.name}`, m.args || {});
             out = ok === true ? await run(m.agentId, t.action, m.args || {}) : fail(typeof ok === 'string' ? ok : 'Not allowed.');

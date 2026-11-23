@@ -23,6 +23,7 @@ struct Page: View {
         case .agents: if MV.on { MavisHome() } else { HomePage() }
         case .discover: DiscoverPage()
         case .messages: EmptyView()
+        case .apps: AppsPage()
         case .usage: UsagePage()
         case .connections: PluginsPage()
         case .profile: ProfilePage()

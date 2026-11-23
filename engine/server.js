@@ -13,6 +13,7 @@ import { Engine } from './engine.js';
 import * as history from './history.js';
 import * as git from './git.js';
 import * as hands from './hands.js';
+import * as apps from './apps.js';
 
 const DATA = process.env.AGENT_LAB_DATA || path.join(os.homedir(), 'Library', 'Application Support', 'Agent Lab');
 fs.mkdirSync(DATA, { recursive: true });
@@ -24,11 +25,12 @@ console.warn = console.log;
 
 const store = new Store(DATA);
 const engine = new Engine(store, (event) => out({ event }));
+apps.init(DATA);
 hands.connect((event) => out({ event }));
 // Codex agents reach the panes through this socket (hands-stdio.js).
 // One per engine (a test's engine never takes the app's), gone when it stops.
 const handsSock = path.join(DATA, `hands-${process.pid}.sock`);
-hands.listen(handsSock, (agentId, tool, input) => engine.gateHands(agentId, tool, input));
+hands.listen(handsSock, (agentId, tool, input) => engine.gateHands(agentId, tool, input), apps.fromCodex);
 process.on('exit', () => { try { fs.unlinkSync(handsSock); } catch {} });
 const mavisCache = { list: null };
 
@@ -94,7 +96,7 @@ const methods = {
     return store.agent(copy.id);
   },
   'agent:update'(id, patch) {
-    const allowed = ['name', 'job', 'color', 'look', 'workspace', 'model', 'permission', 'alwaysEdits', 'pinned', 'last', 'claudeSetup'];
+    const allowed = ['name', 'job', 'color', 'look', 'workspace', 'model', 'permission', 'alwaysEdits', 'pinned', 'last', 'claudeSetup', 'apps'];
     const p = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
     const a = store.updateAgent(id, p);
     if (!a) throw new Error('That agent no longer exists.');
@@ -214,7 +216,7 @@ const methods = {
 
 // More calls, one module per area (each exports a function that returns { 'name': fn }): files.js, changes.js,
 // terminal.js, convo.js (helpers, side chats, fork, hand off, context), palette.js.
-for (const mod of ['files.js', 'changes.js', 'terminal.js', 'convo.js', 'palette.js']) {
+for (const mod of ['files.js', 'changes.js', 'terminal.js', 'convo.js', 'palette.js', 'apps.js']) {
   try { Object.assign(methods, (await import(`./${mod}`)).default({ store, engine, git, history, out, DATA })); }
   catch (err) { process.stderr.write(`engine module ${mod}: ${err?.stack || err}\n`); }
 }
